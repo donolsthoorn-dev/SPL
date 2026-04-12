@@ -1,0 +1,146 @@
+openapi: 3.0.3
+info:
+  title: SPL Planning API
+  version: 0.1.0
+servers:
+  - url: https://example.spl.local
+paths:
+  /api/schedule/location-view:
+    get:
+      summary: Weekplanning per locatie
+      parameters:
+        - in: query
+          name: weekStart
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: OK
+  /api/schedule/employee-view:
+    get:
+      summary: Weekplanning per medewerker
+      parameters:
+        - in: query
+          name: weekStart
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: OK
+  /api/assignments:
+    post:
+      summary: Maak assignment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAssignmentRequest'
+      responses:
+        '201':
+          description: Created
+  /api/assignments/{assignmentId}:
+    patch:
+      summary: Update assignment
+      parameters:
+        - in: path
+          name: assignmentId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Updated
+    delete:
+      summary: Verwijder assignment
+      parameters:
+        - in: path
+          name: assignmentId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Deleted
+  /api/suggestions:
+    get:
+      summary: Suggesties voor cel
+      parameters:
+        - in: query
+          name: locationId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: date
+          required: true
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: dayPart
+          required: true
+          schema:
+            type: string
+            enum: [ochtend, middag]
+      responses:
+        '200':
+          description: Ranked candidates
+  /api/publications/publish:
+    post:
+      summary: Publiceer week
+      responses:
+        '200':
+          description: Published
+  /public/schedule:
+    get:
+      summary: Publieke read-only planning
+      parameters:
+        - in: query
+          name: weekStart
+          required: true
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: view
+          required: true
+          schema:
+            type: string
+            enum: [location, employee]
+      responses:
+        '200':
+          description: Public schedule
+components:
+  schemas:
+    CreateAssignmentRequest:
+      type: object
+      required:
+        - assignmentDate
+        - dayPart
+        - hours
+        - locationId
+        - employeeId
+      properties:
+        assignmentDate:
+          type: string
+          format: date
+        dayPart:
+          type: string
+          enum: [ochtend, middag]
+        hours:
+          type: number
+          format: float
+        locationId:
+          type: string
+          format: uuid
+        employeeId:
+          type: string
+          format: uuid

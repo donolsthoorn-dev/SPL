@@ -1,0 +1,38 @@
+@import url("/prototype/styles.css");
+
+.pp-root {
+  min-height: 100vh;
+  padding: 1rem 1.25rem;
+  background: #dff0fb;
+}
+
+/* Prototype CSS verbergt .panel standaard (alleen .panel.active); hier altijd tonen. */
+.pp-root .panel {
+  display: block;
+  max-width: 100%;
+}
+
+.pp-root .panel-header {
+  align-items: flex-start;
+}
+
+.pp-muted {
+  color: #5a6b7a;
+  font-size: 0.95rem;
+}
+
+.pp-error {
+  color: #b42318;
+  font-size: 0.95rem;
+}
+
+.pp-week-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pp-root .header-actions .pp-week-nav {
+  margin-right: 0.25rem;
+}

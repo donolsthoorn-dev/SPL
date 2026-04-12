@@ -1,0 +1,75 @@
+.planning-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  margin: 0;
+  background: #dff0fb;
+}
+
+.planning-frame-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.planning-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(223, 240, 251, 0.92);
+  padding: 1rem;
+}
+
+.planning-loading-card {
+  max-width: 400px;
+  padding: 1.5rem 1.25rem;
+  background: #fff;
+  border: 1px solid #c9deeb;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(36, 95, 130, 0.15);
+  text-align: center;
+  color: #1f2a37;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.planning-loading-spinner {
+  width: 36px;
+  height: 36px;
+  margin: 0 auto 12px;
+  border: 3px solid #e7f8fd;
+  border-top-color: #16a7cf;
+  border-radius: 50%;
+  animation: planning-spin 0.75s linear infinite;
+}
+
+@keyframes planning-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.planning-loading-title {
+  margin: 0 0 8px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.planning-loading-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #5b6b79;
+}
+
+.planning-frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: none;
+  background: #dff0fb;
+}

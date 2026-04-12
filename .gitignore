@@ -1,0 +1,17 @@
+# Dependencies (altijd opnieuw installeren met npm install in spl-hr-planning-app)
+node_modules/
+
+# Next.js / tooling
+.next/
+out/
+*.tsbuildinfo
+
+# Env en secrets
+.env
+.env.local
+.env.*.local
+
+# OS / logs
+.DS_Store
+**/.DS_Store
+npm-debug.log*

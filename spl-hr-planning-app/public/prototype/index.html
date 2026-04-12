@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SPL weekplanning</title>
+    <link rel="icon" type="image/x-icon" href="https://splopvang.nl/favicon.ico" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar-body">
+          <h1>SPL Planning</h1>
+          <nav class="module-nav">
+            <button class="module-tab active" data-panel="locationsPanel">Locaties</button>
+            <button class="module-tab" data-panel="employeesPanel">Personeel</button>
+            <button class="module-tab" data-panel="locationPlanningPanel">Bezetting per locatie</button>
+            <button class="module-tab" data-panel="employeePlanningPanel">Bezetting per medewerker</button>
+            <button class="module-tab" data-panel="publicPanel">Publieke inzage</button>
+          </nav>
+        </div>
+        <div class="sidebar-footer">
+          <p id="sidebarUserEmail" class="sidebar-user-email"></p>
+          <button type="button" id="sidebarLogoutBtn" class="sidebar-logout-btn">Uitloggen</button>
+        </div>
+      </aside>
+
+      <section class="main-area">
+        <header class="context-header card">
+          <div>
+            <h2>Weekplanning</h2>
+            <p id="contextMeta">Week van 13-04-2026 - Concept</p>
+          </div>
+          <div class="header-actions">
+            <button id="prevWeekBtn" class="ghost-btn">Vorige</button>
+            <input id="weekStart" type="date" value="2026-04-13" />
+            <button id="nextWeekBtn" class="ghost-btn">Volgende</button>
+            <button id="copyWeekBtn" class="ghost-btn">Kopieer vorige week</button>
+            <button id="publishBtn" type="button" class="primary-btn">Publiceer</button>
+            <span id="publishedStatusLabel" class="published-status-label" hidden aria-live="polite">
+              <span class="published-check" aria-hidden="true">✓</span>
+              Gepubliceerd
+            </span>
+          </div>
+        </header>
+
+        <section class="toolbar card">
+          <input id="globalSearch" type="search" placeholder="Zoek..." />
+          <span id="statusSummary" class="badge warning">Conflicten: 0</span>
+          <div id="planningLegend">
+            <div class="legend-chip-row">
+              <div class="drag-chip person-status-blue legend-chip">
+                <i class="fa-solid fa-user" aria-hidden="true"></i>
+                Vast contract
+              </div>
+              <div class="drag-chip person-status-blue legend-chip">
+                <i class="fa-regular fa-user" aria-hidden="true"></i>
+                Inval contract
+              </div>
+              <div class="drag-chip person-status-orange legend-chip">Over uren gepland</div>
+              <div class="drag-chip person-status-red legend-chip">Dubbel gepland (zelfde dagdeel)</div>
+            </div>
+          </div>
+        </section>
+
+        <div id="planningReadOnlyBanner" class="planning-read-only-banner card" hidden role="status">
+          <p>
+            Deze week is <strong>gepubliceerd</strong>. Je kunt de bezetting niet meer aanpassen tot je op
+            <strong>Publieke inzage</strong> op <strong>Depubliceren</strong> hebt geklikt.
+          </p>
+        </div>
+
+        <main class="workspace">
+          <section id="locationsPanel" class="panel active card">
+            <div class="panel-header">
+              <h3>Locaties</h3>
+              <button id="addLocationBtn" class="primary-btn">Nieuwe locatie</button>
+            </div>
+            <div class="panel-search">
+              <input id="locationSearchInput" type="search" placeholder="Zoek locatie" />
+            </div>
+            <div class="table-wrap">
+              <table class="schedule-table" id="locationListTable"></table>
+            </div>
+          </section>
+
+          <section id="employeesPanel" class="panel card">
+            <div class="panel-header">
+              <h3>Personeel</h3>
+              <button id="addEmployeeBtn" class="primary-btn">Nieuwe medewerker</button>
+            </div>
+            <div class="panel-search">
+              <input id="employeeSearchInput" type="search" placeholder="Zoek medewerker" />
+            </div>
+            <div class="table-wrap">
+              <table class="schedule-table" id="employeeListTable"></table>
+            </div>
+          </section>
+
+          <section id="locationDetailPanel" class="panel card">
+            <div class="panel-header">
+              <h3 id="locationDetailTitle">Locatie detail</h3>
+              <button id="backToLocationsBtn" class="ghost-btn">Terug naar locaties</button>
+            </div>
+            <div class="inline-form">
+              <div class="form-grid">
+                <label>Naam locatie<input id="locationDetailNameInput" /></label>
+                <label>Plaatsnaam<input id="locationDetailPlaceInput" /></label>
+              </div>
+
+              <h4>Openingstijden per periode</h4>
+              <div id="locationPeriodsContainer"></div>
+              <button id="addLocationPeriodBtn" class="ghost-btn" type="button">Nieuwe periode toevoegen</button>
+
+              <div id="locationDetailValidation" class="validation-text"></div>
+              <div class="detail-form-actions">
+                <button id="deleteLocationBtn" type="button" class="danger-soft-btn">Locatie verwijderen</button>
+                <button id="saveLocationDetailBtn" class="primary-btn">Opslaan</button>
+              </div>
+            </div>
+          </section>
+
+          <section id="employeeDetailPanel" class="panel card">
+            <div class="panel-header">
+              <h3 id="employeeDetailTitle">Medewerker detail</h3>
+              <button id="backToEmployeesBtn" class="ghost-btn">Terug naar medewerkers</button>
+            </div>
+            <div class="inline-form">
+              <div class="form-grid form-grid-4">
+                <label>Naam medewerker<input id="employeeDetailNameInput" /></label>
+                <label>E-mailadres<input id="employeeDetailEmailInput" type="email" placeholder="naam@voorbeeld.nl" /></label>
+                <label>Contracttype
+                  <select id="employeeDetailContractInput">
+                    <option value="Vast">Vast contract</option>
+                    <option value="Inval">Inval contract</option>
+                  </select>
+                </label>
+                <label>Contracturen<input id="employeeDetailHoursInput" type="number" step="0.5" min="0" /></label>
+                <label>Uit dienst per<input id="employeeDetailEndDateInput" type="date" /></label>
+              </div>
+
+              <h4>Persoonlijke planningslink</h4>
+              <div class="detail-form-actions" style="margin-bottom: 0.75rem;">
+                <input id="employeePersonalPlanningLinkInput" readonly style="flex:1;min-width:260px;" />
+                <button id="openEmployeePersonalPlanningLinkBtn" class="ghost-btn" type="button">Link openen</button>
+                <button id="copyEmployeePersonalPlanningLinkBtn" class="ghost-btn" type="button">Kopieer link</button>
+              </div>
+
+              <h4>Werkdagen</h4>
+              <table class="period-days-grid weekday-matrix">
+                <thead>
+                  <tr>
+                    <th>Maandag</th>
+                    <th>Dinsdag</th>
+                    <th>Woensdag</th>
+                    <th>Donderdag</th>
+                    <th>Vrijdag</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><input type="checkbox" id="employeeDay1" /></td>
+                    <td><input type="checkbox" id="employeeDay2" /></td>
+                    <td><input type="checkbox" id="employeeDay3" /></td>
+                    <td><input type="checkbox" id="employeeDay4" /></td>
+                    <td><input type="checkbox" id="employeeDay5" /></td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <h4>Voorkeurslocaties</h4>
+              <div class="shuttle-wrap">
+                <div>
+                  <label for="employeeAvailableLocations">Beschikbare locaties</label>
+                  <select id="employeeAvailableLocations" multiple size="8"></select>
+                </div>
+                <div class="shuttle-actions">
+                  <button id="moveLocationRightBtn" class="ghost-btn" type="button">&gt;</button>
+                  <button id="moveLocationLeftBtn" class="ghost-btn" type="button">&lt;</button>
+                </div>
+                <div>
+                  <label for="employeeSelectedLocations">Geselecteerde locaties</label>
+                  <select id="employeeSelectedLocations" multiple size="8"></select>
+                </div>
+              </div>
+
+              <h4>Afwezigheid</h4>
+              <p class="note employee-absence-hint">
+                Per regel een <strong>datum</strong> en <strong>reden</strong>. Rijen zonder datum worden bij Opslaan genegeerd. Meer dagen: knop
+                &ldquo;Afwezigheidsregel toevoegen&rdquo;.
+              </p>
+              <table class="period-days-grid employee-absence-table" id="employeeAbsenceTable">
+                <thead>
+                  <tr>
+                    <th scope="col">Datum</th>
+                    <th scope="col">Reden</th>
+                    <th scope="col">Actie</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+              <button id="addEmployeeAbsenceBtn" class="ghost-btn" type="button">Afwezigheidsregel toevoegen</button>
+
+              <div id="employeeDetailValidation" class="validation-text"></div>
+              <div class="detail-form-actions">
+                <button id="deleteEmployeeBtn" type="button" class="danger-soft-btn">Medewerker verwijderen</button>
+                <button id="saveEmployeeDetailBtn" class="primary-btn">Opslaan</button>
+              </div>
+            </div>
+          </section>
+
+          <section id="locationPlanningPanel" class="panel card">
+            <div class="panel-header">
+              <h3>Bezetting per locatie</h3>
+              <div class="header-actions">
+                <label for="quickFilterWrap">Filter op bezetting</label>
+                <select id="quickFilterWrap">
+                  <option value="all">Alles</option>
+                  <option value="understaffed">Alleen onderbezet</option>
+                  <option value="overstaffed">Alleen overbezet</option>
+                  <option value="conflicts">Alleen conflicten</option>
+                </select>
+                <label for="locationFilterWrap">Filter op locatie</label>
+                <select id="locationFilterWrap">
+                  <option value="all">Alle locaties</option>
+                </select>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="schedule-table" id="locationPlanningTable"></table>
+            </div>
+          </section>
+
+          <section id="employeePlanningPanel" class="panel card">
+            <div class="panel-header">
+              <h3>Bezetting per medewerker</h3>
+            </div>
+            <div class="table-wrap">
+              <table class="schedule-table" id="employeePlanningTable"></table>
+            </div>
+          </section>
+
+          <section id="publicPanel" class="panel card">
+            <div class="panel-header">
+              <h3>Publieke inzage</h3>
+              <div class="header-actions">
+                <select id="publicWeekSelect" title="Kies een gepubliceerde week">
+                  <option value="">Gepubliceerde week...</option>
+                </select>
+                <select id="publicModeSelect">
+                  <option value="location">Per locatie</option>
+                  <option value="employee">Per medewerker</option>
+                </select>
+                <button type="button" id="publicExportExcelBtn" class="ghost-btn" disabled title="Download als Excel (.csv)">
+                  Excel
+                </button>
+                <button type="button" id="publicExportPdfBtn" class="ghost-btn" disabled title="Open afdrukvenster (opslaan als PDF)">
+                  PDF
+                </button>
+                <button type="button" id="publicCopyLinkBtn" class="ghost-btn" disabled title="Kopieer openbare link naar klembord">
+                  Link
+                </button>
+                <button type="button" id="publicSendEmailBtn" class="ghost-btn" disabled title="Stuur planning per e-mail naar medewerkers met e-mailadres">
+                  E-mail planning naar 0 medewerkers
+                </button>
+                <button type="button" id="publicUnpublishBtn" class="danger-soft-btn" hidden>
+                  Depubliceren
+                </button>
+              </div>
+            </div>
+            <div id="publicReadOnlyInfo" class="note">
+              Concept: voorbeeld van de planning zoals na publiceren. Kies hierboven per locatie of per medewerker.
+            </div>
+            <div class="table-wrap">
+              <table class="schedule-table" id="publicTable"></table>
+            </div>
+          </section>
+        </main>
+      </section>
+
+      <aside class="drawer card">
+        <h3>Planner assistent</h3>
+        <p id="selectedCellMeta"></p>
+        <div id="conflictSection">
+          <h4>Conflicten</h4>
+          <ul id="conflictList" class="stack-list"></ul>
+        </div>
+        <h4 id="plannedListTitle">Geplande medewerkers</h4>
+        <div id="plannedEmployeeList" class="chip-list"></div>
+        <h4 id="suggestionListTitle">Suggesties</h4>
+        <input id="assistantSearchInput" type="search" placeholder="Zoek medewerker..." />
+        <div id="suggestionList" class="chip-list"></div>
+        <div id="availableSection">
+          <h4 id="availableListTitle">Overige beschikbare medewerkers</h4>
+          <div id="employeeAvailableList" class="chip-list"></div>
+        </div>
+        <h4 id="unavailableListTitle">Niet beschikbare medewerkers</h4>
+        <div id="employeeUnavailableList" class="chip-list"></div>
+      </aside>
+    </div>
+    <script src="./wireframe.js"></script>
+  </body>
+</html>

@@ -1,0 +1,161 @@
+# Prototype UX Specificatie
+
+Dit document beschrijft de UX-doelen voor de near-build-ready prototypefase.
+
+## UX-doelen
+- Nanda moet binnen enkele klikken een cel kunnen vullen, vervangen of leegmaken.
+- Conflicten moeten direct zichtbaar en oplosbaar zijn.
+- Belangrijke weekcontext altijd zichtbaar: week en publicatiestatus.
+
+## Informatiearchitectuur
+- Linker navigatie: modules (`Locaties`, `Personeel`, `Bezetting per locatie`, `Bezetting per medewerker`, `Publieke inzage`).
+- Middengebied: actieve module met werktafel.
+- Rechter assistentpaneel: celcontext, acties, conflicten en suggesties.
+- Visuele stijl afgestemd op SPL-site: rustige lichtgrijze achtergrond, zachte kaarten, warme goudbruine primaire accentkleur, subtiele contrasten.
+- Gekozen stijlrichting nu: **strak en minimalistisch (Vercel-geinspireerd)** met:
+  - koele neutrale achtergrond en witte oppervlakken,
+  - hoge leesbaarheid met sterke zwart/wit-contrasten,
+  - sobere, subtiele borders en zeer lichte shadows,
+  - ingetogen hover/focus states en strakke tabelkoppen.
+- Typografie en schaal zijn aangescherpt naar een compact dashboardritme:
+  - uniforme sans-serif stack (`Geist` fallback naar `Inter/system-ui`),
+  - heading schaal: h2 20px, h3 18px, h4 14px,
+  - compacte controls (36px hoogte) en kleinere tabeltekst voor hogere informatiedichtheid.
+- Extra Vercel-achtige afwerking:
+  - donkere, contrastrijke sidebar met semibold navigatielabels,
+  - zeer lichte contentvlakken met subtiele borders,
+  - metadata/subtitels in kleine uppercase stijl (hogere scanbaarheid).
+- SPL-kleurafstemming op basis van referentie:
+  - heldere cyaan/blauwgroene primaire kleur voor navigatie en accenten,
+  - oranje call-to-action kleur voor primaire actieknoppen,
+  - lichtblauwe achtergronden voor pagina en tabelkoppen.
+- Sidebar staat nu zonder buitenmarge aan linker-, boven- en onderzijde van de viewport.
+
+## Componentgedrag
+- Cellen in locatieplanning zijn klikbaar en kleuren op basis van bezetting.
+- Planner assistent gebruikt drag-and-drop:
+  - medewerkers en suggesties als sleepbare kaartjes,
+  - neerzetten op een open planningcel voor toewijzing.
+- In `Bezetting per medewerker` is een omgekeerde assistent beschikbaar:
+  - klik op een medewerker-dagcel om context te kiezen,
+  - sleep/klik vervolgens locatie-dagdeelkaartjes om die medewerker op die dag in te plannen.
+- Planner assistent wordt in `Bezetting per locatie` alleen getoond na selectie van een planningcel.
+- Zonder geselecteerde cel is de werkruimte paginabreed (assistentkolom is ingeklapt).
+- Planner assistent toont medewerkers gesplitst in:
+  - `Geplande medewerkers` (exacte inhoud van geselecteerde cel),
+  - `Overige beschikbare medewerkers` (boven),
+  - `Niet beschikbare medewerkers` (onder).
+- Als er geen `Overige beschikbare medewerkers` zijn, wordt dit volledige blok niet getoond.
+- Iedere medewerker staat daarbij maximaal 1x in de assistent (in precies een van deze blokken).
+- Medewerkerkaartjes tonen urenstand rechts uitgelijnd, bijv. `16/22.5`.
+- Kleurstatus op medewerkerkaartjes:
+  - blauw = binnen voorwaarden (`x <= max` en geen dubbeling op zelfde dagdeel),
+  - oranje = overgepland (`x > max`),
+  - rood = dubbel gepland op hetzelfde dagdeel.
+- `Overige beschikbare medewerkers` worden altijd blauw getoond.
+- Suggesties bevatten alleen medewerkers die nog binnen voorwaarden inzetbaar zijn (niet over uren, niet dubbel gepland op zelfde dagdeel).
+- Droppen op een open cel wordt geaccepteerd, ook als dit een conflict veroorzaakt; cel- en kaartstatus tonen vervolgens de waarschuwing.
+- Tijdens slepen lichten toepasbare planningcellen op.
+- Suggestieblok staat bovenaan in de assistent en toont altijd maximaal 3 kandidaten (zonder aparte berekenknop).
+- Klikken op een suggestie- of beschikbaarheidskaartje plant direct in de geselecteerde cel; medewerker verdwijnt uit die lijsten en verschijnt onder `Geplande medewerkers`.
+- Conflictsectie wordt alleen getoond als er daadwerkelijk conflicten zijn, met concrete conflictmeldingen.
+- Geselecteerde celinformatie in assistent staat op 3 duidelijke regels:
+  - `Geselecteerd: <locatie>`,
+  - `Datum: DD/MM/YYYY`,
+  - `Dagdeel: Ochtend/Middag`.
+- Medewerkers in planningcellen zijn zelf ook kaartjes:
+  - sleepbaar naar een andere cel (verplaatsen),
+  - met verwijderknop per kaartje.
+- Bij conflict op medewerkerniveau toont het kaartje een waarschuwingsteken;
+  mouseover geeft de conflictuitleg met datum/datatums waar die medewerker ook staat ingepland.
+- Conflictuitleg is contextueel op de geselecteerde cel: alleen conflict op dezelfde datum + dagdeel telt mee.
+- Conflictmeldingen benoemen expliciet de andere locatie(s) en dagdeel, bijv.:
+  - `Naam staat op deze dag ook gepland op <locatie> in de ochtend/middag.`
+- In `Bezetting per locatie` werken `Vorige week` en `Volgende week` als echte weeknavigatie (steeds 7 dagen verschuiven).
+- Kolomkoppen in weektabellen tonen dag + datum op 2 regels en gecentreerd, bijv.:
+  - `MAANDAG`
+  - `13/04/2026`
+- `Kopieer vorige week` toont een bevestigingsprompt met datum van vorige week en expliciete keuze:
+  - `Ja, overschrijven` (OK),
+  - `Nee, annuleren` (Cancel).
+- In `Bezetting per locatie` is de globale zoekbalk verborgen.
+- In `Bezetting per medewerker` krijgt de dagcel een rode waarschuwing als een medewerker op die dag dubbel gepland staat op hetzelfde dagdeel.
+- In `Bezetting per medewerker` krijgt de totaalkolom een rode waarschuwing als geplande uren boven contracturen uitkomen.
+- In `Bezetting per medewerker` worden lege dagcellen groen gemarkeerd als de medewerker die dag wel inzetbaar is maar nog niet ingepland staat.
+- In `Bezetting per medewerker` zijn niet-werkdagen (en afwezige dagen) wit en niet-planbaar; alleen planbare werkdagen accepteren klik/drop vanuit de assistent.
+- In `Bezetting per locatie` staat de filterselector in de schermheader (op de plek van de eerdere uitlegtekst).
+- In `Bezetting per locatie` staan nu 2 filters in de header:
+  - `Filter op bezetting` (Alles / onderbezet / overbezet / conflicten),
+  - `Filter op locatie` (alle locaties of 1 specifieke locatie).
+- Legenda staat in de balk boven de planningstabel, naast de conflictenteller.
+- Conflictenteller in deze balk wordt dynamisch berekend op basis van actuele conflictcellen in de weekplanning.
+- Filter werkt op celniveau met opties:
+  - `Alles`,
+  - `Alleen onderbezet`,
+  - `Alleen overbezet`,
+  - `Alleen conflicten`.
+- Als een filter voor een locatie-/dagdeelrij geen resultaten heeft, wordt die rij niet getoond.
+- Medewerkers in planningcellen worden per persoon op een nieuwe regel getoond; lange namen worden afgekort met ellipsis.
+- Aantaltellers zoals `.. medewerkers` worden niet in de celtekst getoond.
+- Voor minimaal 1 locatie zijn dinsdag en donderdag als gesloten openingsdagen gemarkeerd; deze planningcellen zijn wit en niet planbaar.
+- Prototype bevat expliciete demo-data voor:
+  - minimaal 1 overbezette cel,
+  - minimaal 1 dubbele medewerker op hetzelfde dagdeel over meerdere locaties (conflict).
+- Demo-seeding is uitgebreid naar een bijna realistische week:
+  - alle locaties in de matrix,
+  - alle medewerkers ingezet via rotatie,
+  - compacte baseline met nog planruimte (niet alles vol gepland),
+  - her en der expliciet volgeplande blokken (4 medewerkers) voor realistischer testbeeld,
+  - beperkte set van bewuste afwijkingen voor validatie (onderbezet, overbezet, conflict).
+- Realistische compactheid in bezettingsoverzicht:
+  - slechts een beperkte set locaties heeft planbare middagdelen,
+  - dagdeelrijen die voor de hele week gesloten zijn worden niet getoond.
+- Extra demo-sluitingen:
+  - `Boerderij`: alle middagen dicht,
+  - `De Ballon`: maandag ochtend dicht.
+- Suggesties tonen scores en redencodes.
+- Publieke inzage toont alleen gepubliceerde data.
+- Zoek/filter werkt over zichtbare tabellen.
+- In `Locaties` en `Personeel` zijn overzichtsregels volledig klikbaar en openen detail in hetzelfde `index.html` frame (geen losse pagina).
+- In `Locatie detail` staan `Naam locatie` en `Plaatsnaam` met labels boven de invoervelden.
+- `Locatie detail` bevat meerdere periodeblokken met per periode:
+  - `van/tot`,
+  - een compacte dagdelenmatrix in 1 tabel met extra eerste kolom `Dagdeel` en daaronder de rijlabels `Ochtend` en `Middag`.
+  - extra marge tussen datumregel en tabel voor betere leesbaarheid.
+- `Nieuwe periode toevoegen` neemt de waarden van de vorige periode over (datums + uren per dagdeel).
+- Open/dicht in `Bezetting per locatie` wordt direct afgeleid uit ingevulde periode-uren:
+  - als voor een dag/dagdeel binnen actieve periode uren > 0 staan, is de cel planbaar,
+  - anders toont de planning `Gesloten` (wit, niet planbaar).
+- Baseline openingsmodel is versmald:
+  - alle locaties plannen standaard alleen `ochtend`,
+  - alleen `Het Gebouw` wijkt af met vaste splitsing:
+    - `Groep 1: Rood` + `Groep 2: blauw` = ochtend,
+    - `Groep 3: groen` + `Groep 4: geel` = middag.
+- Locatiecheck in `Bezetting per locatie`:
+  - per locatie maximaal 5 verschillende medewerkers per week,
+  - bij overschrijding verschijnt op het locatievak een waarschuwing (`x/5`).
+  - demo-seeding bevat bewust een mix van locaties met en zonder waarschuwing.
+- Demo-seeding bevat daarnaast meerdere stabiele ochtendlocaties met 3 medewerkers per cel, zodat in het overzicht direct meerdere groene regels zonder waarschuwing zichtbaar zijn.
+- Capaciteitsbandbreedte in locatieplanning is afgestemd op prototype-realiteit:
+  - onderbezet bij minder dan 2,
+  - overbezet bij meer dan 4.
+- Medewerkers in demo-data hebben variërende werkpatronen (3, 4 of 5 werkdagen), zodat `Bezetting per medewerker` niet overal op 5 dagen vult en er planruimte/open vakken zichtbaar blijven.
+- Vanaf periode 2 is `Periode verwijderen` beschikbaar met bevestigingsprompt; knop heeft lichte rode stijl als destructieve actie.
+- In `Medewerker detail` staan alle basisvelden met labels, plus:
+  - `Naam medewerker`, `Contracttype`, `Uren per week` en `Uit dienst per` in 4 kolommen,
+  - compacte werkdagenmatrix (2 rijen, 5 kolommen: dagen als kolomkoppen, checkboxes eronder),
+  - hevel-/shuttlelijst voor voorkeurslocaties (links beschikbaar, rechts geselecteerd), inclusief verplaatsen via knoppen en dubbelklik,
+  - afwezigheidstabel met meerdere regels (datum + reden).
+- Afwezigheidsredenen in MVP:
+  - `Ziek`
+  - `Bijzonder verlof`
+- Afwezigheidsflow:
+  - nieuwe regel eerst invullen en op `Toepassen` klikken,
+  - na `Opslaan` worden regels als opgeslagen getoond,
+  - alleen opgeslagen regels tonen `Verwijderen`.
+
+## Validatie-feedback
+- Locatieformulier: periode + uren-validatie.
+- Medewerkerformulier: werkdagen + max dag/weekuren.
+- Toewijzing naar planningcel blokkeert bij harde regelbreuk met duidelijke melding.
+- Periode verwijderen vraagt altijd expliciete bevestiging voor uitvoering.
