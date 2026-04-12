@@ -317,6 +317,44 @@ export function getLocationPlanningVerticalBlocks(
   return blocks;
 }
 
+/**
+ * Per medewerker een verticaal blok: kolom 1 = Medewerker + weekdagen met datum + Totaal,
+ * kolom 2 = waarden (zoals in het brede medewerkersrooster).
+ */
+export function getEmployeePlanningVerticalBlocks(
+  s: PublicPlanningSnapshot,
+): { rows: { label: string; value: string }[] }[] {
+  const blocks: { rows: { label: string; value: string }[] }[] = [];
+
+  sortedEmployeesByName(s.employees).forEach((emp) => {
+    const rows: { label: string; value: string }[] = [{ label: "Medewerker", value: emp.name }];
+
+    for (let weekday = 1; weekday <= 5; weekday++) {
+      const dayLabel = getWeekdayLabelWithDateNl(weekday, s.weekStart);
+      let value: string;
+      if (!isEmployeePlanableForWeekday(emp, weekday, s.weekStart)) {
+        value = "Afwezig";
+      } else {
+        const dayAssignments = s.assignments.filter((a) => a.employeeId === emp.id && a.weekday === weekday);
+        if (dayAssignments.length === 0) {
+          value = isEmployeeAvailableForWeekday(s, emp, weekday) ? "Beschikbaar" : "Afwezig";
+        } else {
+          value = dayAssignments
+            .map((a) => `${getLocationName(s.locations, a.locationId)} (${a.dayPart})`)
+            .join(", ");
+        }
+      }
+      rows.push({ label: dayLabel, value });
+    }
+
+    const total = s.assignments.filter((a) => a.employeeId === emp.id).length * 4.5;
+    rows.push({ label: "Totaal", value: `${total}u / ${emp.weekHours}u` });
+    blocks.push({ rows });
+  });
+
+  return blocks;
+}
+
 /** Rijen voor mobiele weergave: kolom 1 = label, kolom 2 = waarde (één medewerker). */
 export function getPersonalEmployeeVerticalSchedule(
   s: PublicPlanningSnapshot,

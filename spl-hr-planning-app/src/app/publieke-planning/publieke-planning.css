@@ -60,7 +60,8 @@
 
 /* Desktop: brede rooster-tabel; mobiel: voor persoonlijke link een verticale tabel. */
 .pp-table-mobile-personal,
-.pp-table-mobile-location {
+.pp-table-mobile-location,
+.pp-table-mobile-employee {
   display: none;
 }
 
@@ -144,7 +145,9 @@
     padding: 6px;
   }
 
-  .pp-root .table-wrap:not(.pp-table-mobile-personal) .schedule-table {
+  .pp-root
+    .table-wrap:not(.pp-table-mobile-personal):not(.pp-table-mobile-location-block):not(.pp-table-mobile-employee-block)
+    .schedule-table {
     min-width: 520px;
   }
 
@@ -153,25 +156,30 @@
   }
 
   .pp-table-mobile-personal,
-  .pp-table-mobile-location {
+  .pp-table-mobile-location,
+  .pp-table-mobile-employee {
     display: block;
     margin-left: 0;
     margin-right: 0;
   }
 
-  .pp-table-mobile-location-block + .pp-table-mobile-location-block {
+  .pp-table-mobile-location-block + .pp-table-mobile-location-block,
+  .pp-table-mobile-employee-block + .pp-table-mobile-employee-block {
     margin-top: 1rem;
   }
 
   .pp-table-mobile-personal .schedule-table,
-  .pp-table-mobile-location .schedule-table {
+  .pp-table-mobile-location .schedule-table,
+  .pp-table-mobile-employee .schedule-table {
     min-width: 0 !important;
   }
 
   .pp-table-mobile-personal .schedule-table th,
   .pp-table-mobile-personal .schedule-table td,
   .pp-table-mobile-location .schedule-table th,
-  .pp-table-mobile-location .schedule-table td {
+  .pp-table-mobile-location .schedule-table td,
+  .pp-table-mobile-employee .schedule-table th,
+  .pp-table-mobile-employee .schedule-table td {
     font-size: 0.9375rem;
     padding: 0.65rem 0.5rem;
   }

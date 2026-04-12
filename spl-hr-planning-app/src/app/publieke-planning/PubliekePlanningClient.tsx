@@ -9,6 +9,7 @@ import {
   buildPublicLocationTableHtml,
   formatWeekPlanLabelNl,
   getIsoWeekNumber,
+  getEmployeePlanningVerticalBlocks,
   getLocationPlanningVerticalBlocks,
   getPersonalEmployeeVerticalSchedule,
   matrixToCsvSemicolon,
@@ -107,6 +108,11 @@ export default function PubliekePlanningClient({
 
   const locationVerticalBlocks = useMemo(
     () => (!personalPlanning && effectiveMode === "location" ? getLocationPlanningVerticalBlocks(s) : []),
+    [personalPlanning, effectiveMode, s],
+  );
+
+  const employeeVerticalBlocks = useMemo(
+    () => (!personalPlanning && effectiveMode === "employee" ? getEmployeePlanningVerticalBlocks(s) : []),
     [personalPlanning, effectiveMode, s],
   );
 
@@ -246,11 +252,7 @@ export default function PubliekePlanningClient({
                   : "Alleen-lezen weergave voor deze locatie. Wissel hierboven tussen per locatie en per medewerker."
               : "Alleen-lezen weergave van de gepubliceerde planning. Kies per locatie of per medewerker."}
         </div>
-        <div
-          className={`table-wrap pp-table-desktop${
-            personalPlanning || effectiveMode === "location" ? " pp-table-desktop--hide-mobile" : ""
-          }`}
-        >
+        <div className="table-wrap pp-table-desktop pp-table-desktop--hide-mobile">
           <table className="schedule-table" dangerouslySetInnerHTML={{ __html: tableHtml }} />
         </div>
         {personalPlanning && personalVerticalRows.length > 0 ? (
@@ -273,6 +275,26 @@ export default function PubliekePlanningClient({
           <div className="pp-table-mobile-location">
             {locationVerticalBlocks.map((block, blockIdx) => (
               <div key={blockIdx} className="table-wrap pp-table-mobile-location-block">
+                <table className="schedule-table pp-vertical-schedule">
+                  <tbody>
+                    {block.rows.map((row) => (
+                      <tr key={`${blockIdx}-${row.label}`}>
+                        <th scope="row" className="pp-vertical-label">
+                          {row.label}
+                        </th>
+                        <td className="pp-vertical-value">{row.value}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {!personalPlanning && effectiveMode === "employee" && employeeVerticalBlocks.length > 0 ? (
+          <div className="pp-table-mobile-employee">
+            {employeeVerticalBlocks.map((block, blockIdx) => (
+              <div key={blockIdx} className="table-wrap pp-table-mobile-employee-block">
                 <table className="schedule-table pp-vertical-schedule">
                   <tbody>
                     {block.rows.map((row) => (
