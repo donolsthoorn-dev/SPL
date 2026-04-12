@@ -62,7 +62,26 @@ De eerste versie van het schema had een RLS-policy op `admin_users` die naar zic
 
 ## Vercel + eigen domein (TransIP) + mail
 
-In het Vercel-project onder **Settings → Environment Variables** (Production):
+### Resend + `spl-planning.nl` (aanbevolen)
+
+1. **[Resend](https://resend.com)** → inloggen → **Domains** → **Add domain** → `spl-planning.nl`.
+2. Zet de voorgestelde **DNS-records** (meestal TXT/CNAME voor DKIM en SPF) bij je DNS-provider (TransIP of waar `spl-planning.nl` wordt beheerd). Wacht tot Resend de status **Verified** toont.
+3. **API Keys** → **Create API Key** (Sending access is genoeg) → kopieer de key.
+4. In **Vercel** → Project → **Settings** → **Environment Variables** (Production):
+
+| Variabele | Waarde |
+|-----------|--------|
+| `RESEND_API_KEY` | de key van Resend (`re_...`) |
+| `MAIL_FROM` | bijv. `SPL Planning <planning@spl-planning.nl>` (adres moet op het **geverifieerde** domein eindigen) |
+| `MAIL_REPLY_TO` | bijv. `planning@spl-planning.nl` |
+| `PUBLIC_APP_BASE_URL` | **`https://spl-planning.nl`** (zonder slash aan het eind) |
+
+5. **Verwijder of laat leeg** oude `SMTP_*` variabelen als je alleen Resend gebruikt — zodra `RESEND_API_KEY` staat, pakt de app **Resend** en negeert SMTP.
+6. **Redeploy** het project.
+
+### Overige Vercel-variabelen
+
+In hetzelfde scherm horen ook o.a.:
 
 | Variabele | Waarde |
 |-----------|--------|
@@ -70,17 +89,37 @@ In het Vercel-project onder **Settings → Environment Variables** (Production):
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | uit Supabase |
 | `SUPABASE_SERVICE_ROLE_KEY` | service role (geheim) |
 | `PUBLIC_LINK_SIGNING_SECRET` | lange random string (zelfde als lokaal; anders worden oude maillinks ongeldig) |
-| `PUBLIC_APP_BASE_URL` | **`https://jouw-domein.nl`** (zonder slash aan het eind; zo staan links in mail goed) |
+
+### Mail via SMTP (alleen zonder Resend)
+
+Als **`RESEND_API_KEY` leeg** is, gebruikt de app nog **nodemailer + SMTP**:
+
+| Variabele | Waarde |
+|-----------|--------|
+| `PUBLIC_APP_BASE_URL` | **`https://spl-planning.nl`** (of je eigen URL) |
 | `SMTP_HOST` | bijv. `smtp.gmail.com` |
 | `SMTP_PORT` | `465` (Gmail SSL) of `587` (STARTTLS) |
 | `SMTP_SECURE` | `true` bij poort 465, `false` bij 587 |
-| `SMTP_USER` | je Gmail-adres |
-| `SMTP_PASS` | Gmail **app-wachtwoord** (geen normaal wachtwoord) |
-| `MAIL_FROM` | bijv. `"SPL Planning <jouw@gmail.com>"` |
+| `SMTP_USER` | bij Gmail: je Gmail-adres; bij een andere SMTP-provider het account dat mag versturen |
+| `SMTP_PASS` | bij Gmail: **app-wachtwoord** (geen normaal wachtwoord) |
+| `MAIL_FROM` | weergavenaam + afzender, bijv. `"SPL Planning <planning@spl-planning.nl>"` |
+| `MAIL_REPLY_TO` | bijv. `planning@spl-planning.nl` |
 
-Na elke wijziging: **Redeploy**. Controleer in TransIP dat het domein naar Vercel wijst (A/CNAME zoals Vercel aangeeft).
+**Afzender vs. SMTP-account:** De app zet `From` en `Reply-To` uit `MAIL_FROM` / `MAIL_REPLY_TO`. Welk adres **Gmail (en veel andere clients) als “echte” afzender toont**, hangt af van de **SMTP-login** (`SMTP_USER`): bij `smtp.gmail.com` ben je ingelogd als je **Gmail-account**, en Google koppelt het bericht daaraan. Daarom zie je vaak nog **donolsthoorn@gmail.com** in het contactkaartje, ook al staat de weergavenaam “SPL opvang”.
 
-Als `PUBLIC_APP_BASE_URL` leeg blijft, gebruikt de app op Vercel automatisch `VERCEL_URL` (vaak `*.vercel.app`). Voor nette links in mail: zet altijd je eigen domein in `PUBLIC_APP_BASE_URL`.
+**Zo krijg je wél `hr@splopvang.nl` als afzender:**
+
+1. **Gmail blijven gebruiken**   In het Google-account dat bij `SMTP_USER` hoort: **Instellingen → Alle instellingen weergeven → Accounts en import → E-mail verzenden als** → voeg **`hr@splopvang.nl`** toe en rond de verificatie af (link in mailbox van dat adres). Daarna moet `MAIL_FROM` exact dat adres gebruiken, bijv. `SPL opvang <hr@splopvang.nl>`. Zonder deze stap mag Gmail niet “als” dat adres versturen en blijft je Gmail-adres zichtbaar.
+
+2. **Aanbevolen voor organisaties:** SMTP van **je eigen domein** (TransIP e-mail, Microsoft 365 / Exchange, enz.) met een mailbox of verzendaccount **`hr@splopvang.nl`**. Zet dan `SMTP_HOST` / `SMTP_USER` / `SMTP_PASS` van die provider; dan klopt afzender en DKIM/SPF meestal ook beter.
+
+Controleer in Vercel dat de variabele **`SMTP_PORT`** heet (niet `MTP_PORT`).
+
+Na elke wijziging: **Redeploy**. Controleer in TransIP dat **spl-planning.nl** (of je app-domein) naar Vercel wijst (A/CNAME zoals Vercel aangeeft). **DNS voor mail (Resend)** zijn extra records naast de website-records.
+
+**Mail vanaf een ander domein (bijv. `splopvang.nl`):** Zelfde stappen: domein in Resend toevoegen en verifiëren, daarna `MAIL_FROM` / `MAIL_REPLY_TO` op adressen onder dat domein zetten.
+
+Als `PUBLIC_APP_BASE_URL` leeg blijft, gebruikt de app op Vercel automatisch `VERCEL_URL` (vaak `*.vercel.app`). Voor nette links in mail: zet je eigen domein in `PUBLIC_APP_BASE_URL`.
 
 ## Volgende stap voor productie
 

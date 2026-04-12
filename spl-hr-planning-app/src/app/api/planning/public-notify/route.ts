@@ -10,6 +10,7 @@ const WEEK_RE = /^\d{4}-\d{2}-\d{2}$/;
 function mapEmailSendError(error: unknown): string {
   const raw = error instanceof Error ? error.message : "Onbekende fout";
   if (
+    raw.includes("RESEND_API_KEY") ||
     raw.includes("SMTP_HOST") ||
     raw.includes("SMTP_PORT") ||
     raw.includes("SMTP_USER") ||
@@ -17,7 +18,7 @@ function mapEmailSendError(error: unknown): string {
     raw.includes("SMTP_SECURE") ||
     raw.includes("MAIL_FROM")
   ) {
-    return "E-mail is nog niet geconfigureerd op de server. Vul de SMTP-instellingen in .env.local in en herstart de app.";
+    return "E-mail is nog niet geconfigureerd op de server. Zet RESEND_API_KEY (Resend) of SMTP-* variabelen in .env.local / Vercel en herstart of redeploy.";
   }
   if (raw.includes("PUBLIC_APP_BASE_URL")) {
     return "PUBLIC_APP_BASE_URL ontbreekt. Voeg deze toe aan .env.local en herstart de app.";
@@ -92,7 +93,7 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json({ ok: true, sent: result.sent });
   } catch (e) {
-    const message = e instanceof Error ? e.message : "Onbekende fout";
+    const message = mapEmailSendError(e);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

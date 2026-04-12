@@ -136,11 +136,14 @@ export default async function PubliekePlanningPage({
       assignments: snapshot.assignments.filter((assignment) => assignment.employeeId === restrictedEmployee.id),
     };
   } else if (restrictedLocation) {
+    const assignments = snapshot.assignments.filter((assignment) => assignment.locationId === restrictedLocation.id);
+    const employeeIdsAtLocation = new Set(assignments.map((a) => a.employeeId));
+    const employees = snapshot.employees.filter((e) => employeeIdsAtLocation.has(e.id));
     filteredSnapshot = {
       weekStart: resolvedWeekStart!,
       locations: [restrictedLocation],
-      employees: snapshot.employees,
-      assignments: snapshot.assignments.filter((assignment) => assignment.locationId === restrictedLocation.id),
+      employees,
+      assignments,
     };
   } else {
     filteredSnapshot = {

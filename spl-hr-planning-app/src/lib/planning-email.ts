@@ -1,3 +1,4 @@
+import { Resend } from "resend";
 import nodemailer from "nodemailer";
 import { getIsoWeekNumber } from "@/lib/publieke-planning-renderer";
 import { createPublicLocationPlanningToken, createPublicPlanningToken } from "@/lib/public-planning-token";
@@ -34,6 +35,69 @@ function getPublicAppBaseUrl(): string {
     );
   }
   return raw.replace(/\/+$/, "");
+}
+
+function usesResend(): boolean {
+  return Boolean(process.env.RESEND_API_KEY?.trim());
+}
+
+type PlanningMailPayload = {
+  from: string;
+  replyTo?: string;
+  to: string;
+  subject: string;
+  html: string;
+};
+
+function createPlanningMailSender(): (payload: PlanningMailPayload) => Promise<void> {
+  if (usesResend()) {
+    const resend = new Resend(process.env.RESEND_API_KEY!.trim());
+    return async (payload) => {
+      const { error } = await resend.emails.send({
+        from: payload.from,
+        to: payload.to,
+        ...(payload.replyTo ? { replyTo: payload.replyTo } : {}),
+        subject: payload.subject,
+        html: payload.html,
+      });
+      if (error) {
+        throw new Error(error.message);
+      }
+    };
+  }
+
+  if (
+    !process.env.SMTP_HOST?.trim() ||
+    !process.env.SMTP_USER?.trim() ||
+    !process.env.SMTP_PASS?.trim()
+  ) {
+    throw new Error(
+      "Mail is niet geconfigureerd: zet RESEND_API_KEY in Vercel (Production) en redeploy, of vul SMTP_HOST, SMTP_USER en SMTP_PASS in.",
+    );
+  }
+
+  const host = getRequiredEnv("SMTP_HOST");
+  const port = Number(process.env.SMTP_PORT || "587");
+  const user = getRequiredEnv("SMTP_USER");
+  const pass = getRequiredEnv("SMTP_PASS");
+  const secure = String(process.env.SMTP_SECURE || "false") === "true";
+
+  const transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    auth: { user, pass },
+  });
+
+  return async (payload) => {
+    await transporter.sendMail({
+      from: payload.from,
+      ...(payload.replyTo ? { replyTo: payload.replyTo } : {}),
+      to: payload.to,
+      subject: payload.subject,
+      html: payload.html,
+    });
+  };
 }
 
 export function buildPlanningPublishEmailHtml(args: {
@@ -88,22 +152,11 @@ export function buildPlanningPublishEmailHtml(args: {
 export async function sendPlanningPublishEmails(args: SendPlanningPublishEmailsArgs): Promise<{ sent: number }> {
   if (!args.recipients.length) return { sent: 0 };
 
-  const host = getRequiredEnv("SMTP_HOST");
-  const port = Number(process.env.SMTP_PORT || "587");
-  const user = getRequiredEnv("SMTP_USER");
-  const pass = getRequiredEnv("SMTP_PASS");
   const from = getRequiredEnv("MAIL_FROM");
   const replyTo = process.env.MAIL_REPLY_TO?.trim() || undefined;
   const baseUrl = getPublicAppBaseUrl();
   const logoUrl = `${baseUrl}/mail/spl-logo.png`;
-  const secure = String(process.env.SMTP_SECURE || "false") === "true";
-
-  const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    auth: { user, pass },
-  });
+  const sendMail = createPlanningMailSender();
 
   let sent = 0;
   for (const recipient of args.recipients) {
@@ -118,9 +171,9 @@ export async function sendPlanningPublishEmails(args: SendPlanningPublishEmailsA
       logoUrl,
       audience: "employee",
     });
-    await transporter.sendMail({
+    await sendMail({
       from,
-      ...(replyTo ? { replyTo } : {}),
+      replyTo,
       to: recipient.email,
       subject: `Nieuwe planning beschikbaar - week ${getIsoWeekNumber(args.weekStart)}`,
       html,
@@ -138,22 +191,11 @@ export async function sendLocationPlanningPublishEmails(args: {
 }): Promise<{ sent: number }> {
   if (!args.recipients.length) return { sent: 0 };
 
-  const host = getRequiredEnv("SMTP_HOST");
-  const port = Number(process.env.SMTP_PORT || "587");
-  const user = getRequiredEnv("SMTP_USER");
-  const pass = getRequiredEnv("SMTP_PASS");
   const from = getRequiredEnv("MAIL_FROM");
   const replyTo = process.env.MAIL_REPLY_TO?.trim() || undefined;
   const baseUrl = getPublicAppBaseUrl();
   const logoUrl = `${baseUrl}/mail/spl-logo.png`;
-  const secure = String(process.env.SMTP_SECURE || "false") === "true";
-
-  const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    auth: { user, pass },
-  });
+  const sendMail = createPlanningMailSender();
 
   let sent = 0;
   for (const recipient of args.recipients) {
@@ -168,9 +210,9 @@ export async function sendLocationPlanningPublishEmails(args: {
       logoUrl,
       audience: "location",
     });
-    await transporter.sendMail({
+    await sendMail({
       from,
-      ...(replyTo ? { replyTo } : {}),
+      replyTo,
       to: recipient.email,
       subject: `Nieuwe planning beschikbaar - week ${getIsoWeekNumber(args.weekStart)}`,
       html,
