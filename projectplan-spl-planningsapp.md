@@ -1,4 +1,4 @@
-# Projectplan SPL Planningsapplicatie
+# Projectplan Planningsapplicatie SPL
 
 ## 1) Doel en resultaat
 SPL wil snel van foutgevoelige Excel-planning naar een centrale applicatie voor 26 locaties en circa 120 medewerkers.
