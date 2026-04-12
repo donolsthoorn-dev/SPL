@@ -14,6 +14,7 @@ const state = {
   selectedLocationId: null,
   selectedEmployeeId: null,
   mailEligibleCount: 0,
+  mailLocationEligibleCount: 0,
   mailSending: false,
   publishedWeeks: [],
   locationCellFilter: "all",
@@ -543,6 +544,7 @@ function renderContextControls() {
 function syncPublishButtonAppearance() {
   const btn = document.getElementById("publishBtn");
   const label = document.getElementById("publishedStatusLabel");
+  const unpublish = document.getElementById("publicUnpublishBtn");
   if (!btn || !label) return;
   const pub = Boolean(state.published);
   if (pub) {
@@ -550,6 +552,11 @@ function syncPublishButtonAppearance() {
     label.removeAttribute("hidden");
     btn.setAttribute("aria-hidden", "true");
     label.setAttribute("aria-hidden", "false");
+    if (unpublish) {
+      unpublish.hidden = false;
+      unpublish.removeAttribute("hidden");
+      unpublish.setAttribute("aria-hidden", "false");
+    }
   } else {
     label.setAttribute("hidden", "");
     btn.removeAttribute("hidden");
@@ -559,16 +566,20 @@ function syncPublishButtonAppearance() {
     btn.classList.add("primary-btn");
     btn.removeAttribute("aria-pressed");
     btn.title = "Maak de planning van deze week zichtbaar op Publieke inzage.";
+    if (unpublish) {
+      unpublish.hidden = true;
+      unpublish.setAttribute("hidden", "");
+      unpublish.setAttribute("aria-hidden", "true");
+    }
   }
 }
 
 function syncPublicPanelActions() {
-  const unpublish = document.getElementById("publicUnpublishBtn");
   const excel = document.getElementById("publicExportExcelBtn");
   const pdf = document.getElementById("publicExportPdfBtn");
   const link = document.getElementById("publicCopyLinkBtn");
   const emailBtn = document.getElementById("publicSendEmailBtn");
-  if (unpublish) unpublish.hidden = !state.published;
+  const emailLocBtn = document.getElementById("publicSendLocationEmailBtn");
   const dis = !state.published;
   if (excel) excel.disabled = dis;
   if (pdf) pdf.disabled = dis;
@@ -579,6 +590,13 @@ function syncPublicPanelActions() {
     emailBtn.textContent = state.mailSending
       ? "E-mail verzenden..."
       : `E-mail planning naar ${formatMedewerkerCount(state.mailEligibleCount)}`;
+  }
+  if (emailLocBtn) {
+    const emailLocDis = dis || state.mailSending || state.mailLocationEligibleCount <= 0;
+    emailLocBtn.disabled = emailLocDis;
+    emailLocBtn.textContent = state.mailSending
+      ? "E-mail verzenden..."
+      : `E-mail planning naar ${formatLocatieCount(state.mailLocationEligibleCount)}`;
   }
 }
 
@@ -655,6 +673,10 @@ function formatWeekStart(dateStr) {
 
 function formatMedewerkerCount(n) {
   return `${n} ${n === 1 ? "medewerker" : "medewerkers"}`;
+}
+
+function formatLocatieCount(n) {
+  return `${n} ${n === 1 ? "locatie" : "locaties"}`;
 }
 
 function getWeekdayHeaderLabel(weekday) {
@@ -882,6 +904,8 @@ function openLocationDetail(locationId) {
   document.getElementById("locationDetailTitle").textContent = `Locatie detail - ${location.name}`;
   document.getElementById("locationDetailNameInput").value = location.name;
   document.getElementById("locationDetailPlaceInput").value = location.place;
+  const emailInput = document.getElementById("locationDetailEmailInput");
+  if (emailInput) emailInput.value = location.email || "";
   renderLocationPeriods(location);
   activatePanel("locationDetailPanel");
 }
@@ -1794,15 +1818,24 @@ function renderPublicTable() {
 
 async function refreshPublicEmailState() {
   try {
-    const res = await fetch(`/api/planning/public-notify?weekStart=${encodeURIComponent(state.weekStart)}`, {
-      credentials: "include"
-    });
-    if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
-    state.mailEligibleCount = Number(data.eligibleCount || 0);
+    const [resEmp, resLoc] = await Promise.all([
+      fetch(`/api/planning/public-notify?weekStart=${encodeURIComponent(state.weekStart)}`, {
+        credentials: "include"
+      }),
+      fetch(`/api/planning/public-notify-locations?weekStart=${encodeURIComponent(state.weekStart)}`, {
+        credentials: "include"
+      })
+    ]);
+    if (!resEmp.ok) throw new Error(await resEmp.text());
+    if (!resLoc.ok) throw new Error(await resLoc.text());
+    const dataEmp = await resEmp.json();
+    const dataLoc = await resLoc.json();
+    state.mailEligibleCount = Number(dataEmp.eligibleCount || 0);
+    state.mailLocationEligibleCount = Number(dataLoc.eligibleCount || 0);
   } catch (e) {
     console.error("Mailstatus laden mislukt", e);
     state.mailEligibleCount = 0;
+    state.mailLocationEligibleCount = 0;
   } finally {
     syncPublicPanelActions();
   }
@@ -2185,9 +2218,9 @@ function activatePanel(panelId) {
 }
 
 panelTabs.forEach((tab) => tab.addEventListener("click", () => activatePanel(tab.dataset.panel)));
-globalSearchEl.addEventListener("input", refreshSearch);
-locationSearchInputEl.addEventListener("input", refreshSearch);
-employeeSearchInputEl.addEventListener("input", refreshSearch);
+globalSearchEl?.addEventListener("input", refreshSearch);
+locationSearchInputEl?.addEventListener("input", refreshSearch);
+employeeSearchInputEl?.addEventListener("input", refreshSearch);
 document.getElementById("publishBtn").addEventListener("click", async () => {
   state.published = !state.published;
   if (state.published) {
@@ -2240,6 +2273,36 @@ document.getElementById("publicSendEmailBtn").addEventListener("click", async ()
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error || "Mail versturen mislukt");
     window.alert(`E-mail verzonden naar ${formatMedewerkerCount(Number(data.sent || 0))}.`);
+  } catch (e) {
+    window.alert("Mail versturen mislukt.\n\n" + (e.message || e));
+  } finally {
+    state.mailSending = false;
+    await refreshPublicEmailState();
+  }
+});
+
+document.getElementById("publicSendLocationEmailBtn").addEventListener("click", async () => {
+  if (!state.published) {
+    window.alert("Publiceer eerst de planning.");
+    return;
+  }
+  if (state.mailLocationEligibleCount <= 0) {
+    window.alert("Geen locaties met e-mailadres.");
+    return;
+  }
+  const ok = window.confirm(`E-mail planning versturen naar ${formatLocatieCount(state.mailLocationEligibleCount)}?`);
+  if (!ok) return;
+
+  state.mailSending = true;
+  syncPublicPanelActions();
+  try {
+    const res = await fetch(`/api/planning/public-notify-locations?weekStart=${encodeURIComponent(state.weekStart)}`, {
+      method: "POST",
+      credentials: "include"
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || "Mail versturen mislukt");
+    window.alert(`E-mail verzonden naar ${formatLocatieCount(Number(data.sent || 0))}.`);
   } catch (e) {
     window.alert("Mail versturen mislukt.\n\n" + (e.message || e));
   } finally {
@@ -2342,6 +2405,7 @@ document.getElementById("deleteLocationBtn").addEventListener("click", async () 
     renderPlanningTables();
     activatePanel("locationsPanel");
     if (planningBootDone) void persistWeekNow();
+    await refreshPublicEmailState();
   } catch (e) {
     window.alert("Verwijderen mislukt: " + (e.message || e));
   }
@@ -2350,14 +2414,20 @@ document.getElementById("deleteLocationBtn").addEventListener("click", async () 
 document.getElementById("saveLocationDetailBtn").addEventListener("click", async () => {
   const name = document.getElementById("locationDetailNameInput").value.trim();
   const place = document.getElementById("locationDetailPlaceInput").value.trim();
+  const emailRaw = (document.getElementById("locationDetailEmailInput")?.value || "").trim();
   if (!name || !place) {
     document.getElementById("locationDetailValidation").textContent = "Naam en plaats zijn verplicht.";
+    return;
+  }
+  if (emailRaw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)) {
+    document.getElementById("locationDetailValidation").textContent = "Ongeldig e-mailadres.";
     return;
   }
   const location = locations.find((l) => l.id === state.selectedLocationId);
   if (!location) return;
   location.name = name;
   location.place = place;
+  location.email = emailRaw || undefined;
   readLocationPeriodsFromDetailForm(location);
   try {
     const res = await fetch(`/api/planning/location/${state.selectedLocationId}`, {
@@ -2367,6 +2437,7 @@ document.getElementById("saveLocationDetailBtn").addEventListener("click", async
       body: JSON.stringify({
         name: location.name,
         place: location.place,
+        email: emailRaw || null,
         periods: location.periods
       })
     });
@@ -2380,6 +2451,7 @@ document.getElementById("saveLocationDetailBtn").addEventListener("click", async
   renderLocationFilterOptions();
   renderPlanningTables();
   activatePanel("locationsPanel");
+  await refreshPublicEmailState();
 });
 document.getElementById("addLocationPeriodBtn").addEventListener("click", () => {
   const location = locations.find((l) => l.id === state.selectedLocationId);
@@ -2608,26 +2680,26 @@ document.getElementById("addEmployeeBtn").addEventListener("click", async () => 
       await persistWeekNow();
     }
     planningBootDone = true;
+    renderLocationFilterOptions();
+    renderLocationList();
+    renderEmployeeList();
+    renderPlanningTables();
+    await refreshPublishedWeeks();
+    renderPublicTable();
+    await refreshPublicEmailState();
+    renderEmployeeSelect();
+    activatePanel("locationsPanel");
+    notifyParentPlanningShell("ready");
   } catch (e) {
     console.error(e);
     if (shell) {
       shell.innerHTML =
         `<div style="padding:2rem;font-family:system-ui,sans-serif;max-width:520px;">` +
         `<p><strong>Planningdata laden mislukt.</strong></p>` +
-        `<p>Controleer of je bent ingelogd als admin en voer in Supabase <code>supabase-planning-schema.sql</code> uit.</p>` +
+        `<p>Controleer of je bent ingelogd als admin en voer in Supabase <code>supabase-planning-schema.sql</code> uit. ` +
+        `Heb je net locatie-e-mail toegevoegd? Voer dan ook <code>supabase-locations-email.sql</code> uit.</p>` +
         `<p style="color:#b42318;">${String(e.message || e)}</p></div>`;
     }
     notifyParentPlanningShell("error");
-    return;
   }
-  renderLocationFilterOptions();
-  renderLocationList();
-  renderEmployeeList();
-  renderPlanningTables();
-  await refreshPublishedWeeks();
-  renderPublicTable();
-  await refreshPublicEmailState();
-  renderEmployeeSelect();
-  activatePanel("locationsPanel");
-  notifyParentPlanningShell("ready");
 })();

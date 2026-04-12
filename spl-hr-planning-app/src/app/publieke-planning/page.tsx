@@ -19,22 +19,33 @@ export async function generateMetadata({
   const tokenRaw = sp.t;
   const weekParam = Array.isArray(weekRaw) ? weekRaw[0] : weekRaw;
   const tokenParam = Array.isArray(tokenRaw) ? tokenRaw[0] : tokenRaw;
-  let tokenPayload: ReturnType<typeof verifyPublicPlanningToken> | null = null;
+  let verified: ReturnType<typeof verifyPublicPlanningToken> | null = null;
   if (tokenParam) {
     try {
-      tokenPayload = verifyPublicPlanningToken(tokenParam);
+      verified = verifyPublicPlanningToken(tokenParam);
     } catch {
-      tokenPayload = null;
+      verified = null;
     }
   }
-  const resolvedWeekStart = tokenPayload?.weekStart ?? weekParam;
+  const resolvedWeekStart = verified?.weekStart ?? weekParam;
   if (!resolvedWeekStart || !WEEK_RE.test(resolvedWeekStart)) {
     return { title: "Publieke planning | SPL", description: "Gepubliceerde weekplanning (alleen-lezen)" };
   }
   const label = formatWeekPlanLabelNl(resolvedWeekStart);
-  const personal = Boolean(tokenPayload);
+  if (verified?.audience === "employee") {
+    return {
+      title: `Persoonlijke planning — ${label} | SPL`,
+      description: "Gepubliceerde weekplanning (alleen-lezen)",
+    };
+  }
+  if (verified?.audience === "location") {
+    return {
+      title: `Locatie planning — ${label} | SPL`,
+      description: "Gepubliceerde weekplanning (alleen-lezen)",
+    };
+  }
   return {
-    title: personal ? `Persoonlijke planning — ${label} | SPL` : `Publieke planning — ${label} | SPL`,
+    title: `Publieke planning — ${label} | SPL`,
     description: "Gepubliceerde weekplanning (alleen-lezen)",
   };
 }
@@ -49,15 +60,15 @@ export default async function PubliekePlanningPage({
   const tokenRaw = sp.t;
   const weekParam = Array.isArray(weekRaw) ? weekRaw[0] : weekRaw;
   const tokenParam = Array.isArray(tokenRaw) ? tokenRaw[0] : tokenRaw;
-  let tokenPayload = null;
+  let verified = null;
   if (tokenParam) {
     try {
-      tokenPayload = verifyPublicPlanningToken(tokenParam);
+      verified = verifyPublicPlanningToken(tokenParam);
     } catch {
-      tokenPayload = null;
+      verified = null;
     }
   }
-  const resolvedWeekStart = tokenPayload?.weekStart ?? weekParam;
+  const resolvedWeekStart = verified?.weekStart ?? weekParam;
   const resolvedWeekOk = Boolean(resolvedWeekStart && WEEK_RE.test(resolvedWeekStart));
 
   if (!resolvedWeekOk) {
@@ -91,11 +102,16 @@ export default async function PubliekePlanningPage({
     );
   }
 
-  const restrictedEmployee = tokenPayload
-    ? snapshot.employees.find((employee) => employee.id === tokenPayload.employeeId)
-    : null;
+  const restrictedEmployee =
+    verified?.audience === "employee"
+      ? snapshot.employees.find((employee) => employee.id === verified.employeeId)
+      : null;
+  const restrictedLocation =
+    verified?.audience === "location"
+      ? snapshot.locations.find((location) => location.id === verified.locationId)
+      : null;
 
-  if (tokenPayload && !restrictedEmployee) {
+  if (verified?.audience === "employee" && !restrictedEmployee) {
     return (
       <div className="pp-root">
         <p className="pp-error">Deze persoonlijke link is ongeldig of niet meer actief.</p>
@@ -103,24 +119,42 @@ export default async function PubliekePlanningPage({
     );
   }
 
-  const filteredSnapshot = restrictedEmployee
-    ? {
-        weekStart: resolvedWeekStart!,
-        locations: snapshot.locations,
-        employees: [restrictedEmployee],
-        assignments: snapshot.assignments.filter((assignment) => assignment.employeeId === restrictedEmployee.id),
-      }
-    : {
-        weekStart: resolvedWeekStart!,
-        locations: snapshot.locations,
-        employees: snapshot.employees,
-        assignments: snapshot.assignments,
-      };
+  if (verified?.audience === "location" && !restrictedLocation) {
+    return (
+      <div className="pp-root">
+        <p className="pp-error">Deze locatie-link is ongeldig of niet meer actief.</p>
+      </div>
+    );
+  }
+
+  let filteredSnapshot;
+  if (restrictedEmployee) {
+    filteredSnapshot = {
+      weekStart: resolvedWeekStart!,
+      locations: snapshot.locations,
+      employees: [restrictedEmployee],
+      assignments: snapshot.assignments.filter((assignment) => assignment.employeeId === restrictedEmployee.id),
+    };
+  } else if (restrictedLocation) {
+    filteredSnapshot = {
+      weekStart: resolvedWeekStart!,
+      locations: [restrictedLocation],
+      employees: snapshot.employees,
+      assignments: snapshot.assignments.filter((assignment) => assignment.locationId === restrictedLocation.id),
+    };
+  } else {
+    filteredSnapshot = {
+      weekStart: resolvedWeekStart!,
+      locations: snapshot.locations,
+      employees: snapshot.employees,
+      assignments: snapshot.assignments,
+    };
+  }
 
   let weekNav: PersonalPlanningWeekNav | undefined;
-  if (tokenPayload && restrictedEmployee && supabase) {
+  if (verified?.audience === "employee" && restrictedEmployee && supabase) {
     try {
-      const weeksForEmp = await fetchPublishedWeekStartsForEmployee(supabase, tokenPayload.employeeId);
+      const weeksForEmp = await fetchPublishedWeekStartsForEmployee(supabase, verified.employeeId);
       const idx = weeksForEmp.indexOf(resolvedWeekStart!);
       if (idx !== -1 && weeksForEmp.length > 1) {
         weekNav = {};
@@ -128,14 +162,14 @@ export default async function PubliekePlanningPage({
           const w = weeksForEmp[idx - 1]!;
           weekNav.prev = {
             weekStart: w,
-            href: `/publieke-planning?week=${encodeURIComponent(w)}&t=${encodeURIComponent(createPublicPlanningToken(w, tokenPayload.employeeId))}`,
+            href: `/publieke-planning?week=${encodeURIComponent(w)}&t=${encodeURIComponent(createPublicPlanningToken(w, verified.employeeId))}`,
           };
         }
         if (idx < weeksForEmp.length - 1) {
           const w = weeksForEmp[idx + 1]!;
           weekNav.next = {
             weekStart: w,
-            href: `/publieke-planning?week=${encodeURIComponent(w)}&t=${encodeURIComponent(createPublicPlanningToken(w, tokenPayload.employeeId))}`,
+            href: `/publieke-planning?week=${encodeURIComponent(w)}&t=${encodeURIComponent(createPublicPlanningToken(w, verified.employeeId))}`,
           };
         }
       }
@@ -148,7 +182,9 @@ export default async function PubliekePlanningPage({
     <PubliekePlanningClient
       snapshot={filteredSnapshot}
       personalPlanning={Boolean(restrictedEmployee)}
+      locationPlanning={Boolean(restrictedLocation)}
       restrictedEmployeeName={restrictedEmployee?.name}
+      restrictedLocationName={restrictedLocation?.name}
       weekNav={weekNav}
     />
   );

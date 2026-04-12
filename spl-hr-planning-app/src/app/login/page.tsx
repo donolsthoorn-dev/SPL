@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createActionClient } from "@/lib/supabase/server";
-import "./login.css";
 
 const loginSchema = z.object({
   email: z.string().email(),

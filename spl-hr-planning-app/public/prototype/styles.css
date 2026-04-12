@@ -334,6 +334,7 @@ button {
 
 /* [hidden] moet altijd winnen: anders toont .published-status-label toch door display: inline-flex */
 #publishBtn[hidden],
+#publicUnpublishBtn[hidden],
 .published-status-label[hidden] {
   display: none !important;
 }

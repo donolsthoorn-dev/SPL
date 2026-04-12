@@ -18,6 +18,7 @@ const periodSchema = z.object({
 const patchSchema = z.object({
   name: z.string().min(1),
   place: z.string().min(1),
+  email: z.string().max(320).optional().nullable(),
   periods: z.array(periodSchema).min(1),
 });
 
@@ -45,12 +46,21 @@ export async function PATCH(
     return NextResponse.json({ error: "Ongeldige payload" }, { status: 400 });
   }
 
+  const rawEmail = parsed.data.email;
+  const emailTrim =
+    rawEmail === null || rawEmail === undefined ? "" : String(rawEmail).trim();
+  const email = emailTrim === "" ? null : emailTrim;
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return NextResponse.json({ error: "Ongeldig e-mailadres" }, { status: 400 });
+  }
+
   try {
     const { error: uErr } = await auth.supabase
       .from("spl_locations")
       .update({
         name: parsed.data.name,
         place: parsed.data.place,
+        email,
         updated_at: new Date().toISOString(),
       })
       .eq("id", id);

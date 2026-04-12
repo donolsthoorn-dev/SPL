@@ -7,6 +7,7 @@ import { requirePlanningApiUser } from "@/lib/planning-api-auth";
 const postSchema = z.object({
   name: z.string().min(1).max(200),
   place: z.string().min(1).max(120),
+  email: z.string().max(320).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -25,6 +26,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Ongeldige payload" }, { status: 400 });
   }
 
+  const emailTrim = parsed.data.email?.trim() ?? "";
+  const email = emailTrim === "" ? null : emailTrim;
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return NextResponse.json({ error: "Ongeldig e-mailadres" }, { status: 400 });
+  }
+
   try {
     const { data: last } = await auth.supabase
       .from("spl_locations")
@@ -40,6 +47,7 @@ export async function POST(request: NextRequest) {
       .insert({
         name: parsed.data.name,
         place: parsed.data.place,
+        email,
         sort_order: sortOrder,
       })
       .select("id")
@@ -60,6 +68,7 @@ export async function POST(request: NextRequest) {
       id: locRow.id,
       name: parsed.data.name,
       place: parsed.data.place,
+      ...(email ? { email } : {}),
       periods: [period],
     };
 

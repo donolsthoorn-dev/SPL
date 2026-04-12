@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
 import { getIsoWeekNumber } from "@/lib/publieke-planning-renderer";
-import { createPublicPlanningToken } from "@/lib/public-planning-token";
+import { createPublicLocationPlanningToken, createPublicPlanningToken } from "@/lib/public-planning-token";
 
 type Recipient = {
   id: string;
@@ -14,6 +14,8 @@ type SendPlanningPublishEmailsArgs = {
   notes?: string | null;
   recipients: Recipient[];
 };
+
+export type PlanningEmailAudience = "employee" | "location";
 
 function getRequiredEnv(name: string): string {
   const value = process.env[name];
@@ -41,7 +43,13 @@ export function buildPlanningPublishEmailHtml(args: {
   notes?: string | null;
   publicLink: string;
   logoUrl: string;
+  audience: PlanningEmailAudience;
 }): string {
+  const intro =
+    args.audience === "employee"
+      ? "Via onderstaande knop open je direct jouw persoonlijke planning."
+      : "Via onderstaande knop open je direct de locatie planning.";
+  const ctaLabel = args.audience === "employee" ? "Bekijk mijn planning" : "Bekijk de planning";
   const notesBlock = args.notes?.trim()
     ? `<p style="margin:0 0 14px;color:#1f2a37;line-height:1.55;"><strong>Opmerking:</strong><br/>${args.notes.replace(/\n/g, "<br/>")}</p>`
     : "";
@@ -61,10 +69,10 @@ export function buildPlanningPublishEmailHtml(args: {
           </p>
           ${notesBlock}
           <p style="margin:0 0 16px;color:#1f2a37;line-height:1.55;">
-            Via onderstaande knop open je direct jouw persoonlijke planning.
+            ${intro}
           </p>
           <p style="margin:0 0 12px;">
-            <a href="${args.publicLink}" style="display:inline-block;background:#139ec5;color:#ffffff;padding:10px 16px;border-radius:10px;text-decoration:none;font-weight:600;">Bekijk mijn planning</a>
+            <a href="${args.publicLink}" style="display:inline-block;background:#139ec5;color:#ffffff;padding:10px 16px;border-radius:10px;text-decoration:none;font-weight:600;">${ctaLabel}</a>
           </p>
           <p style="margin:0;color:#5b6b79;font-size:12px;line-height:1.45;">
             Werkt de knop niet? Kopieer dan deze link in je browser:<br/>
@@ -108,6 +116,57 @@ export async function sendPlanningPublishEmails(args: SendPlanningPublishEmailsA
       notes: args.notes,
       publicLink,
       logoUrl,
+      audience: "employee",
+    });
+    await transporter.sendMail({
+      from,
+      ...(replyTo ? { replyTo } : {}),
+      to: recipient.email,
+      subject: `Nieuwe planning beschikbaar - week ${getIsoWeekNumber(args.weekStart)}`,
+      html,
+    });
+    sent += 1;
+  }
+  return { sent };
+}
+
+export async function sendLocationPlanningPublishEmails(args: {
+  weekStart: string;
+  planTitle: string;
+  notes?: string | null;
+  recipients: Recipient[];
+}): Promise<{ sent: number }> {
+  if (!args.recipients.length) return { sent: 0 };
+
+  const host = getRequiredEnv("SMTP_HOST");
+  const port = Number(process.env.SMTP_PORT || "587");
+  const user = getRequiredEnv("SMTP_USER");
+  const pass = getRequiredEnv("SMTP_PASS");
+  const from = getRequiredEnv("MAIL_FROM");
+  const replyTo = process.env.MAIL_REPLY_TO?.trim() || undefined;
+  const baseUrl = getPublicAppBaseUrl();
+  const logoUrl = `${baseUrl}/mail/spl-logo.png`;
+  const secure = String(process.env.SMTP_SECURE || "false") === "true";
+
+  const transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    auth: { user, pass },
+  });
+
+  let sent = 0;
+  for (const recipient of args.recipients) {
+    const token = createPublicLocationPlanningToken(args.weekStart, recipient.id);
+    const publicLink = `${baseUrl}/publieke-planning?t=${encodeURIComponent(token)}`;
+    const html = buildPlanningPublishEmailHtml({
+      recipientName: recipient.name,
+      weekStart: args.weekStart,
+      planTitle: args.planTitle,
+      notes: args.notes,
+      publicLink,
+      logoUrl,
+      audience: "location",
     });
     await transporter.sendMail({
       from,

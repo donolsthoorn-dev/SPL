@@ -23,6 +23,7 @@ create table if not exists public.spl_locations (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   place text not null,
+  email text,
   sort_order int not null default 0,
   updated_at timestamptz not null default now()
 );

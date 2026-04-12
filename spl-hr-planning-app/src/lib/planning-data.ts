@@ -15,6 +15,7 @@ export type WireframeLocation = {
   id: string;
   name: string;
   place: string;
+  email?: string;
   periods: WireframePeriod[];
 };
 
@@ -342,6 +343,7 @@ export async function fetchMasterWireframe(supabase: SupabaseClient): Promise<{
     id: row.id,
     name: row.name,
     place: row.place,
+    email: row.email ?? undefined,
     periods: (periodsByLoc.get(row.id) || []).map((per) => ({
       start: per.start_date,
       end: per.end_date,

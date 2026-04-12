@@ -46,29 +46,42 @@ function escapeHtmlForPdfTitle(s: string): string {
 export default function PubliekePlanningClient({
   snapshot,
   personalPlanning,
+  locationPlanning,
   restrictedEmployeeName,
+  restrictedLocationName,
   weekNav,
 }: {
   snapshot: PubliekePlanningSnapshot;
   /** Persoonlijke token-link (medewerker), los van of de naam in stamdata gezet is. */
   personalPlanning?: boolean;
+  /** Token-link voor één locatie (per-locatie tabel). */
+  locationPlanning?: boolean;
   restrictedEmployeeName?: string;
+  restrictedLocationName?: string;
   weekNav?: PersonalPlanningWeekNav;
 }) {
-  const [mode, setMode] = useState<"location" | "employee">(personalPlanning ? "employee" : "location");
-  const effectiveMode = personalPlanning ? "employee" : mode;
+  const [mode, setMode] = useState<"location" | "employee">(
+    personalPlanning ? "employee" : "location",
+  );
+  const effectiveMode = personalPlanning ? "employee" : locationPlanning ? "location" : mode;
 
   const weekPlanLabel = formatWeekPlanLabelNl(snapshot.weekStart);
   const pageHeading = personalPlanning
     ? `Persoonlijke planning — ${weekPlanLabel}`
-    : `Publieke inzage — ${weekPlanLabel}`;
+    : locationPlanning
+      ? `Locatie planning — ${weekPlanLabel}`
+      : `Publieke inzage — ${weekPlanLabel}`;
 
   useEffect(() => {
     const label = formatWeekPlanLabelNl(snapshot.weekStart);
-    document.title = personalPlanning
-      ? `Persoonlijke planning — ${label} | SPL`
-      : `Publieke planning — ${label} | SPL`;
-  }, [personalPlanning, snapshot.weekStart]);
+    if (personalPlanning) {
+      document.title = `Persoonlijke planning — ${label} | SPL`;
+    } else if (locationPlanning) {
+      document.title = `Locatie planning — ${label} | SPL`;
+    } else {
+      document.title = `Publieke planning — ${label} | SPL`;
+    }
+  }, [personalPlanning, locationPlanning, snapshot.weekStart]);
 
   const tableHtml = useMemo(() => {
     const s = {
@@ -167,7 +180,7 @@ export default function PubliekePlanningClient({
             <select
               id="publicModeSelect"
               value={effectiveMode}
-              disabled={Boolean(personalPlanning)}
+              disabled={Boolean(personalPlanning || locationPlanning)}
               onChange={(e) => setMode(e.target.value as "location" | "employee")}
               aria-label="Weergave"
             >
@@ -187,7 +200,11 @@ export default function PubliekePlanningClient({
             ? restrictedEmployeeName?.trim()
               ? `Persoonlijke alleen-lezen weergave voor ${restrictedEmployeeName.trim()}.`
               : "Persoonlijke alleen-lezen weergave."
-            : "Alleen-lezen weergave van de gepubliceerde planning. Kies per locatie of per medewerker."}
+            : locationPlanning
+              ? restrictedLocationName?.trim()
+                ? `Alleen-lezen weergave voor locatie ${restrictedLocationName.trim()}.`
+                : "Alleen-lezen weergave voor deze locatie."
+              : "Alleen-lezen weergave van de gepubliceerde planning. Kies per locatie of per medewerker."}
         </div>
         <div className="table-wrap">
           <table className="schedule-table" dangerouslySetInnerHTML={{ __html: tableHtml }} />
