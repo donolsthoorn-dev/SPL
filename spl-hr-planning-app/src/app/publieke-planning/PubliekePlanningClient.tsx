@@ -9,6 +9,8 @@ import {
   buildPublicLocationTableHtml,
   formatWeekPlanLabelNl,
   getIsoWeekNumber,
+  getLocationPlanningVerticalBlocks,
+  getPersonalEmployeeVerticalSchedule,
   matrixToCsvSemicolon,
   matrixToHtmlTable,
 } from "@/lib/publieke-planning-renderer";
@@ -63,7 +65,8 @@ export default function PubliekePlanningClient({
   const [mode, setMode] = useState<"location" | "employee">(
     personalPlanning ? "employee" : "location",
   );
-  const effectiveMode = personalPlanning ? "employee" : locationPlanning ? "location" : mode;
+  /** Alleen persoonlijke planning is vast per medewerker; locatie-token en gewone publieke pagina mogen wisselen. */
+  const effectiveMode = personalPlanning ? "employee" : mode;
 
   const weekPlanLabel = formatWeekPlanLabelNl(snapshot.weekStart);
   const pageHeading = personalPlanning
@@ -83,38 +86,40 @@ export default function PubliekePlanningClient({
     }
   }, [personalPlanning, locationPlanning, snapshot.weekStart]);
 
-  const tableHtml = useMemo(() => {
-    const s = {
+  const s = useMemo(
+    () => ({
       weekStart: snapshot.weekStart,
       locations: snapshot.locations,
       employees: snapshot.employees,
       assignments: snapshot.assignments,
-    };
+    }),
+    [snapshot],
+  );
+
+  const tableHtml = useMemo(() => {
     return effectiveMode === "employee" ? buildPublicEmployeeTableHtml(s) : buildPublicLocationTableHtml(s);
-  }, [snapshot, effectiveMode]);
+  }, [s, effectiveMode]);
+
+  const personalVerticalRows = useMemo(
+    () => (personalPlanning ? getPersonalEmployeeVerticalSchedule(s) : []),
+    [personalPlanning, s],
+  );
+
+  const locationVerticalBlocks = useMemo(
+    () => (!personalPlanning && effectiveMode === "location" ? getLocationPlanningVerticalBlocks(s) : []),
+    [personalPlanning, effectiveMode, s],
+  );
 
   const exportExcel = useCallback(() => {
-    const s = {
-      weekStart: snapshot.weekStart,
-      locations: snapshot.locations,
-      employees: snapshot.employees,
-      assignments: snapshot.assignments,
-    };
     const matrix = effectiveMode === "employee" ? buildPublicEmployeeMatrix(s) : buildPublicLocationMatrix(s);
     const csv = matrixToCsvSemicolon(matrix);
     const suffix = effectiveMode === "employee" ? "medewerker" : "locatie";
-    triggerDownloadCsv(csv, `spl-planning-${snapshot.weekStart}-${suffix}.csv`);
-  }, [snapshot, effectiveMode]);
+    triggerDownloadCsv(csv, `spl-planning-${s.weekStart}-${suffix}.csv`);
+  }, [s, effectiveMode]);
 
   const exportPdf = useCallback(() => {
-    const s = {
-      weekStart: snapshot.weekStart,
-      locations: snapshot.locations,
-      employees: snapshot.employees,
-      assignments: snapshot.assignments,
-    };
     const matrix = effectiveMode === "employee" ? buildPublicEmployeeMatrix(s) : buildPublicLocationMatrix(s);
-    const title = `SPL planning week ${getIsoWeekNumber(snapshot.weekStart)} — ${
+    const title = `SPL planning week ${getIsoWeekNumber(s.weekStart)} — ${
       effectiveMode === "employee" ? "per medewerker" : "per locatie"
     }`;
     const inner = matrixToHtmlTable(matrix);
@@ -141,20 +146,20 @@ export default function PubliekePlanningClient({
     requestAnimationFrame(() => {
       w.print();
     });
-  }, [snapshot, effectiveMode]);
+  }, [s, effectiveMode]);
 
   return (
-    <div className="pp-root">
+    <div className={`pp-root${personalPlanning ? " pp-root--personal" : ""}`}>
       <section className="panel card">
         <div className="panel-header">
           <h3>{pageHeading}</h3>
-          <div className="header-actions">
-            {personalPlanning && weekNav && (weekNav.prev || weekNav.next) ? (
-              <nav className="pp-week-nav" aria-label="Andere gepubliceerde weken">
-                {weekNav.prev ? (
+          <div className={`header-actions${personalPlanning ? " pp-personal-toolbar" : ""}`}>
+            {personalPlanning ? (
+              <>
+                {weekNav?.prev ? (
                   <button
                     type="button"
-                    className="ghost-btn"
+                    className="ghost-btn pp-toolbar-btn"
                     title={formatWeekPlanLabelNl(weekNav.prev.weekStart)}
                     onClick={() => {
                       window.location.assign(weekNav.prev!.href);
@@ -163,10 +168,10 @@ export default function PubliekePlanningClient({
                     Vorige week
                   </button>
                 ) : null}
-                {weekNav.next ? (
+                {weekNav?.next ? (
                   <button
                     type="button"
-                    className="ghost-btn"
+                    className="ghost-btn pp-toolbar-btn"
                     title={formatWeekPlanLabelNl(weekNav.next.weekStart)}
                     onClick={() => {
                       window.location.assign(weekNav.next!.href);
@@ -175,24 +180,55 @@ export default function PubliekePlanningClient({
                     Volgende week
                   </button>
                 ) : null}
-              </nav>
-            ) : null}
-            <select
-              id="publicModeSelect"
-              value={effectiveMode}
-              disabled={Boolean(personalPlanning || locationPlanning)}
-              onChange={(e) => setMode(e.target.value as "location" | "employee")}
-              aria-label="Weergave"
-            >
-              <option value="location">Per locatie</option>
-              <option value="employee">Per medewerker</option>
-            </select>
-            <button type="button" className="ghost-btn" onClick={exportExcel} title="Download als Excel (.csv)">
-              Excel
-            </button>
-            <button type="button" className="ghost-btn" onClick={exportPdf} title="Open afdrukvenster (opslaan als PDF)">
-              PDF
-            </button>
+              </>
+            ) : (
+              <>
+                {weekNav && (weekNav.prev || weekNav.next) ? (
+                  <nav className="pp-week-nav" aria-label="Andere gepubliceerde weken">
+                    {weekNav.prev ? (
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        title={formatWeekPlanLabelNl(weekNav.prev.weekStart)}
+                        onClick={() => {
+                          window.location.assign(weekNav.prev!.href);
+                        }}
+                      >
+                        Vorige week
+                      </button>
+                    ) : null}
+                    {weekNav.next ? (
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        title={formatWeekPlanLabelNl(weekNav.next.weekStart)}
+                        onClick={() => {
+                          window.location.assign(weekNav.next!.href);
+                        }}
+                      >
+                        Volgende week
+                      </button>
+                    ) : null}
+                  </nav>
+                ) : null}
+                <select
+                  id="publicModeSelect"
+                  value={effectiveMode}
+                  onChange={(e) => setMode(e.target.value as "location" | "employee")}
+                  aria-label="Weergave"
+                  className="pp-mode-select"
+                >
+                  <option value="location">Per locatie</option>
+                  <option value="employee">Per medewerker</option>
+                </select>
+                <button type="button" className="ghost-btn" onClick={exportExcel} title="Download als Excel (.csv)">
+                  Excel
+                </button>
+                <button type="button" className="ghost-btn" onClick={exportPdf} title="Open afdrukvenster (opslaan als PDF)">
+                  PDF
+                </button>
+              </>
+            )}
           </div>
         </div>
         <div className="note pp-muted" style={{ marginBottom: "0.75rem" }}>
@@ -202,13 +238,57 @@ export default function PubliekePlanningClient({
               : "Persoonlijke alleen-lezen weergave."
             : locationPlanning
               ? restrictedLocationName?.trim()
-                ? `Alleen-lezen weergave voor locatie ${restrictedLocationName.trim()}.`
-                : "Alleen-lezen weergave voor deze locatie."
+                ? effectiveMode === "employee"
+                  ? `Alleen-lezen weergave voor locatie ${restrictedLocationName.trim()} — kolommen per medewerker.`
+                  : `Alleen-lezen weergave voor locatie ${restrictedLocationName.trim()}. Wissel hierboven tussen per locatie en per medewerker.`
+                : effectiveMode === "employee"
+                  ? "Alleen-lezen weergave voor deze locatie — per medewerker."
+                  : "Alleen-lezen weergave voor deze locatie. Wissel hierboven tussen per locatie en per medewerker."
               : "Alleen-lezen weergave van de gepubliceerde planning. Kies per locatie of per medewerker."}
         </div>
-        <div className="table-wrap">
+        <div
+          className={`table-wrap pp-table-desktop${
+            personalPlanning || effectiveMode === "location" ? " pp-table-desktop--hide-mobile" : ""
+          }`}
+        >
           <table className="schedule-table" dangerouslySetInnerHTML={{ __html: tableHtml }} />
         </div>
+        {personalPlanning && personalVerticalRows.length > 0 ? (
+          <div className="table-wrap pp-table-mobile-personal">
+            <table className="schedule-table pp-vertical-schedule">
+              <tbody>
+                {personalVerticalRows.map((row) => (
+                  <tr key={row.label}>
+                    <th scope="row" className="pp-vertical-label">
+                      {row.label}
+                    </th>
+                    <td className="pp-vertical-value">{row.value}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+        {!personalPlanning && effectiveMode === "location" && locationVerticalBlocks.length > 0 ? (
+          <div className="pp-table-mobile-location">
+            {locationVerticalBlocks.map((block, blockIdx) => (
+              <div key={blockIdx} className="table-wrap pp-table-mobile-location-block">
+                <table className="schedule-table pp-vertical-schedule">
+                  <tbody>
+                    {block.rows.map((row) => (
+                      <tr key={`${blockIdx}-${row.label}`}>
+                        <th scope="row" className="pp-vertical-label">
+                          {row.label}
+                        </th>
+                        <td className="pp-vertical-value">{row.value}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </section>
     </div>
   );

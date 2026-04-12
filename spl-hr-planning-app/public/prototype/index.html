@@ -48,9 +48,6 @@
               <span class="published-check" aria-hidden="true">✓</span>
               Gepubliceerd
             </span>
-            <button type="button" id="publicUnpublishBtn" class="danger-soft-btn" hidden title="Planning weer als concept markeren">
-              Depubliceren
-            </button>
           </div>
         </header>
 
@@ -75,8 +72,8 @@
 
         <div id="planningReadOnlyBanner" class="planning-read-only-banner card" hidden role="status">
           <p>
-            Deze week is <strong>gepubliceerd</strong>. Je kunt de bezetting niet meer aanpassen tot je bovenaan op
-            <strong>Depubliceren</strong> hebt geklikt.
+            Deze week is <strong>gepubliceerd</strong>. Je kunt de bezetting niet meer aanpassen tot je op het tabblad
+            <strong>Publieke inzage</strong> op <strong>Depubliceren</strong> hebt geklikt.
           </p>
         </div>
 
@@ -117,6 +114,13 @@
                 <label>Naam locatie<input id="locationDetailNameInput" /></label>
                 <label>Plaatsnaam<input id="locationDetailPlaceInput" /></label>
                 <label>E-mail locatie<input id="locationDetailEmailInput" type="email" autocomplete="email" placeholder="planning@voorbeeld.nl" /></label>
+              </div>
+
+              <h4>Locatie planningslink</h4>
+              <div class="detail-form-actions" style="margin-bottom: 0.75rem;">
+                <input id="locationPlanningLinkInput" readonly style="flex:1;min-width:260px;" />
+                <button id="openLocationPlanningLinkBtn" class="ghost-btn" type="button">Link openen</button>
+                <button id="copyLocationPlanningLinkBtn" class="ghost-btn" type="button">Kopieer link</button>
               </div>
 
               <h4>Openingstijden per periode</h4>
@@ -282,6 +286,9 @@
                   title="Stuur planning per e-mail naar locaties met e-mailadres"
                 >
                   E-mail planning naar 0 locaties
+                </button>
+                <button type="button" id="publicUnpublishBtn" class="danger-soft-btn" hidden title="Planning weer als concept markeren">
+                  Depubliceren
                 </button>
               </div>
             </div>

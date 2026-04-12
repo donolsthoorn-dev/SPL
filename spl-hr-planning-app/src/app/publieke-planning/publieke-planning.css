@@ -36,3 +36,161 @@
 .pp-root .header-actions .pp-week-nav {
   margin-right: 0.25rem;
 }
+
+/* Persoonlijke planning: weekknop(pen). Desktop = inhoudsbreedte; mobiel = volle rij of ~50/50. */
+.pp-personal-toolbar {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 0.35rem;
+  width: auto;
+  justify-content: flex-end;
+}
+
+.pp-toolbar-btn {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+  min-height: 44px;
+  font-size: 0.8125rem;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+  line-height: 1.2;
+}
+
+/* Desktop: brede rooster-tabel; mobiel: voor persoonlijke link een verticale tabel. */
+.pp-table-mobile-personal,
+.pp-table-mobile-location {
+  display: none;
+}
+
+.pp-vertical-schedule {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.pp-vertical-schedule .pp-vertical-label {
+  width: 38%;
+  max-width: 11rem;
+  font-weight: 600;
+  color: var(--text);
+  background: #e8f8fd;
+  vertical-align: top;
+}
+
+.pp-vertical-schedule .pp-vertical-value {
+  vertical-align: top;
+  word-break: break-word;
+}
+
+/* Mobiel: kopregel en acties stapelen; tabel horizontaal scrollen (brede roosters). */
+@media (max-width: 720px) {
+  .pp-root {
+    padding: 0.75rem max(0.75rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom))
+      max(0.75rem, env(safe-area-inset-left));
+  }
+
+  .pp-root .panel-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .pp-root .panel-header h3 {
+    font-size: 1.05rem;
+    line-height: 1.35;
+  }
+
+  .pp-root .header-actions {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 0.5rem;
+  }
+
+  .pp-root .header-actions .pp-week-nav {
+    width: 100%;
+    margin-right: 0;
+  }
+
+  .pp-root .header-actions .pp-week-nav .ghost-btn {
+    flex: 1;
+    min-height: 44px;
+  }
+
+  .pp-mode-select {
+    flex: 1 1 100%;
+    min-width: 0;
+    min-height: 44px;
+    font-size: 16px; /* voorkomt zoom op iOS bij focus */
+  }
+
+  .pp-root .header-actions .ghost-btn {
+    min-height: 44px;
+    padding: 0.5rem 0.65rem;
+  }
+
+  .pp-root .table-wrap {
+    margin-left: -0.25rem;
+    margin-right: -0.25rem;
+    padding-bottom: 0.25rem;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .pp-root .schedule-table th,
+  .pp-root .schedule-table td {
+    font-size: 11px;
+    padding: 6px;
+  }
+
+  .pp-root .table-wrap:not(.pp-table-mobile-personal) .schedule-table {
+    min-width: 520px;
+  }
+
+  .pp-table-desktop--hide-mobile {
+    display: none !important;
+  }
+
+  .pp-table-mobile-personal,
+  .pp-table-mobile-location {
+    display: block;
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .pp-table-mobile-location-block + .pp-table-mobile-location-block {
+    margin-top: 1rem;
+  }
+
+  .pp-table-mobile-personal .schedule-table,
+  .pp-table-mobile-location .schedule-table {
+    min-width: 0 !important;
+  }
+
+  .pp-table-mobile-personal .schedule-table th,
+  .pp-table-mobile-personal .schedule-table td,
+  .pp-table-mobile-location .schedule-table th,
+  .pp-table-mobile-location .schedule-table td {
+    font-size: 0.9375rem;
+    padding: 0.65rem 0.5rem;
+  }
+
+  /* Personal planning toolbar: full-width row; one button fills row, two share ~50%. */
+  .pp-root--personal .pp-personal-toolbar {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .pp-root--personal .pp-toolbar-btn {
+    flex: 1 1 0;
+  }
+}
+
+@media (max-width: 400px) {
+  .pp-root .schedule-table th,
+  .pp-root .schedule-table td {
+    font-size: 10px;
+    padding: 4px 5px;
+  }
+}

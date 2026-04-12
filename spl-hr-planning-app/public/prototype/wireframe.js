@@ -96,6 +96,12 @@ async function switchToWeek(weekStart) {
   renderConflictsAndSuggestions();
   renderEmployeeSelect();
   syncPublicWeekSelectOptions();
+  if (state.activePanel === "employeeDetailPanel" && state.selectedEmployeeId) {
+    void loadEmployeePersonalPlanningLink(state.selectedEmployeeId);
+  }
+  if (state.activePanel === "locationDetailPanel" && state.selectedLocationId) {
+    void loadLocationPlanningLink(state.selectedLocationId);
+  }
 }
 
 function schedulePersistWeek() {
@@ -907,7 +913,10 @@ function openLocationDetail(locationId) {
   const emailInput = document.getElementById("locationDetailEmailInput");
   if (emailInput) emailInput.value = location.email || "";
   renderLocationPeriods(location);
+  const locLinkInput = document.getElementById("locationPlanningLinkInput");
+  if (locLinkInput) locLinkInput.value = "Locatie link laden...";
   activatePanel("locationDetailPanel");
+  void loadLocationPlanningLink(location.id);
 }
 
 /** Nieuwe periode direct na `fromPeriod`, zelfde aantal kalenderdagen (inclusief begin- en einddag). */
@@ -1072,6 +1081,24 @@ async function loadEmployeePersonalPlanningLink(employeeId) {
     input.value = "";
     document.getElementById("employeeDetailValidation").textContent =
       "Persoonlijke link laden mislukt: " + (e.message || e);
+  }
+}
+
+async function loadLocationPlanningLink(locationId) {
+  const input = document.getElementById("locationPlanningLinkInput");
+  if (!input) return;
+  try {
+    const res = await fetch(
+      `/api/planning/public-link?weekStart=${encodeURIComponent(state.weekStart)}&locationId=${encodeURIComponent(locationId)}`,
+      { credentials: "include" },
+    );
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    input.value = data.link || "";
+  } catch (e) {
+    input.value = "";
+    document.getElementById("locationDetailValidation").textContent =
+      "Locatie link laden mislukt: " + (e.message || e);
   }
 }
 
@@ -2577,6 +2604,25 @@ document.getElementById("openEmployeePersonalPlanningLinkBtn").addEventListener(
   const input = document.getElementById("employeePersonalPlanningLinkInput");
   const url = (input?.value || "").trim();
   if (!url) return;
+  window.open(url, "_blank", "noopener,noreferrer");
+});
+document.getElementById("copyLocationPlanningLinkBtn").addEventListener("click", () => {
+  const input = document.getElementById("locationPlanningLinkInput");
+  const url = (input?.value || "").trim();
+  if (!url || url === "Locatie link laden...") return;
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+    navigator.clipboard
+      .writeText(url)
+      .then(() => window.alert("Locatie link is gekopieerd naar het klembord."))
+      .catch(() => window.prompt("Kopieer deze link handmatig:", url));
+  } else {
+    window.prompt("Kopieer deze link:", url);
+  }
+});
+document.getElementById("openLocationPlanningLinkBtn").addEventListener("click", () => {
+  const input = document.getElementById("locationPlanningLinkInput");
+  const url = (input?.value || "").trim();
+  if (!url || url === "Locatie link laden...") return;
   window.open(url, "_blank", "noopener,noreferrer");
 });
 document.getElementById("moveLocationRightBtn").addEventListener("click", () => {

@@ -265,6 +265,86 @@ export function buildPublicLocationMatrix(s: PublicPlanningSnapshot): { headers:
   return { headers, rows };
 }
 
+/** Label voor mobiele locatie-roosterregels: weekdag + datum (dd-mm-jjjj). */
+function getWeekdayLabelWithDateNl(weekday: number, weekStart: string): string {
+  const names: Record<number, string> = {
+    1: "Maandag",
+    2: "Dinsdag",
+    3: "Woensdag",
+    4: "Donderdag",
+    5: "Vrijdag",
+  };
+  const iso = getIsoDateForWeekday(weekStart, weekday);
+  return `${names[weekday]} ${formatWeekStartNl(iso)}`;
+}
+
+/**
+ * Per locatie/dagdeel een verticaal blok: kolom 1 = koppen (Locatie/dagdeel + weekdagen),
+ * kolom 2 = waarden (zoals in het brede rooster).
+ */
+export function getLocationPlanningVerticalBlocks(
+  s: PublicPlanningSnapshot,
+): { rows: { label: string; value: string }[] }[] {
+  const { locations, employees, assignments, weekStart } = s;
+  const blocks: { rows: { label: string; value: string }[] }[] = [];
+
+  sortedLocationsByName(locations).forEach((loc) => {
+    dayParts.forEach((dayPart) => {
+      const hasAnyOpenDayPart = [1, 2, 3, 4, 5].some((weekday) =>
+        isOpenFromPeriods(loc, weekday, dayPart, weekStart),
+      );
+      if (!hasAnyOpenDayPart) return;
+
+      const rows: { label: string; value: string }[] = [
+        { label: "Locatie / dagdeel", value: `${loc.name} - ${dayPart}` },
+      ];
+
+      for (let weekday = 1; weekday <= 5; weekday++) {
+        const dayLabel = getWeekdayLabelWithDateNl(weekday, weekStart);
+        if (!isOpenFromPeriods(loc, weekday, dayPart, weekStart)) {
+          rows.push({ label: dayLabel, value: "Gesloten" });
+          continue;
+        }
+        const ass = getAssignmentsForCell(assignments, loc.id, weekday, dayPart);
+        const names = ass.map((a) => getEmployeeName(employees, a.employeeId)).filter(Boolean);
+        rows.push({ label: dayLabel, value: names.length ? names.join(", ") : "—" });
+      }
+
+      blocks.push({ rows });
+    });
+  });
+
+  return blocks;
+}
+
+/** Rijen voor mobiele weergave: kolom 1 = label, kolom 2 = waarde (één medewerker). */
+export function getPersonalEmployeeVerticalSchedule(
+  s: PublicPlanningSnapshot,
+): { label: string; value: string }[] {
+  const emp = s.employees[0];
+  if (!emp) return [];
+
+  const dayLabels = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag"] as const;
+  const rows: { label: string; value: string }[] = [{ label: "Naam", value: emp.name }];
+
+  for (let weekday = 1; weekday <= 5; weekday++) {
+    const dayAssignments = s.assignments.filter((a) => a.employeeId === emp.id && a.weekday === weekday);
+    let value: string;
+    if (!isEmployeePlanableForWeekday(emp, weekday, s.weekStart)) {
+      value = "Afwezig";
+    } else if (dayAssignments.length === 0) {
+      value = isEmployeeAvailableForWeekday(s, emp, weekday) ? "Beschikbaar" : "Afwezig";
+    } else {
+      value = dayAssignments.map((a) => `${getLocationName(s.locations, a.locationId)} (${a.dayPart})`).join(", ");
+    }
+    rows.push({ label: dayLabels[weekday - 1]!, value });
+  }
+
+  const total = s.assignments.filter((a) => a.employeeId === emp.id).length * 4.5;
+  rows.push({ label: "totaal", value: `${total}u / ${emp.weekHours}u` });
+  return rows;
+}
+
 export function buildPublicEmployeeMatrix(s: PublicPlanningSnapshot): { headers: string[]; rows: string[][] } {
   const headers = ["Medewerker"];
   for (let w = 1; w <= 5; w++) headers.push(getWeekdayExportHeader(w, s.weekStart));

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 /* Centraal laden: voorkomt dat route-CSS soms niet wordt meegenomen (dev/monorepo). */
 import "./login/login.css";
@@ -11,6 +11,12 @@ export const metadata: Metadata = {
     icon: "https://splopvang.nl/favicon.ico",
     shortcut: "https://splopvang.nl/favicon.ico",
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
 };
 
 export default function RootLayout({
