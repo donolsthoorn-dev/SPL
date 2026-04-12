@@ -1,17 +1,43 @@
 import type { Metadata } from "next";
 import { fetchPublishedWeekSnapshot, fetchPublishedWeekStartsForEmployee } from "@/lib/planning-data";
+import { formatWeekPlanLabelNl } from "@/lib/publieke-planning-renderer";
 import { createPublicPlanningToken, verifyPublicPlanningToken } from "@/lib/public-planning-token";
 import { createServiceSupabase } from "@/lib/supabase/service";
 import PubliekePlanningClient, { type PersonalPlanningWeekNav } from "./PubliekePlanningClient";
 
-export const metadata: Metadata = {
-  title: "Publieke planning | SPL",
-  description: "Gepubliceerde weekplanning (alleen-lezen)",
-};
-
 const WEEK_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 type SearchParams = { week?: string | string[]; t?: string | string[] };
+
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}): Promise<Metadata> {
+  const sp = await searchParams;
+  const weekRaw = sp.week;
+  const tokenRaw = sp.t;
+  const weekParam = Array.isArray(weekRaw) ? weekRaw[0] : weekRaw;
+  const tokenParam = Array.isArray(tokenRaw) ? tokenRaw[0] : tokenRaw;
+  let tokenPayload: ReturnType<typeof verifyPublicPlanningToken> | null = null;
+  if (tokenParam) {
+    try {
+      tokenPayload = verifyPublicPlanningToken(tokenParam);
+    } catch {
+      tokenPayload = null;
+    }
+  }
+  const resolvedWeekStart = tokenPayload?.weekStart ?? weekParam;
+  if (!resolvedWeekStart || !WEEK_RE.test(resolvedWeekStart)) {
+    return { title: "Publieke planning | SPL", description: "Gepubliceerde weekplanning (alleen-lezen)" };
+  }
+  const label = formatWeekPlanLabelNl(resolvedWeekStart);
+  const personal = Boolean(tokenPayload);
+  return {
+    title: personal ? `Persoonlijke planning — ${label} | SPL` : `Publieke planning — ${label} | SPL`,
+    description: "Gepubliceerde weekplanning (alleen-lezen)",
+  };
+}
 
 export default async function PubliekePlanningPage({
   searchParams,
@@ -121,6 +147,7 @@ export default async function PubliekePlanningPage({
   return (
     <PubliekePlanningClient
       snapshot={filteredSnapshot}
+      personalPlanning={Boolean(restrictedEmployee)}
       restrictedEmployeeName={restrictedEmployee?.name}
       weekNav={weekNav}
     />

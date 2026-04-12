@@ -60,6 +60,28 @@ Open daarna:
 
 De eerste versie van het schema had een RLS-policy op `admin_users` die naar zichzelf keek; daardoor kan de app je rij niet zien. Voer in de SQL Editor uit: `supabase-fix-admin-users-rls.sql` (of gebruik de huidige `supabase-schema.sql` voor nieuwe projecten).
 
+## Vercel + eigen domein (TransIP) + mail
+
+In het Vercel-project onder **Settings → Environment Variables** (Production):
+
+| Variabele | Waarde |
+|-----------|--------|
+| `NEXT_PUBLIC_SUPABASE_URL` | uit Supabase |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | uit Supabase |
+| `SUPABASE_SERVICE_ROLE_KEY` | service role (geheim) |
+| `PUBLIC_LINK_SIGNING_SECRET` | lange random string (zelfde als lokaal; anders worden oude maillinks ongeldig) |
+| `PUBLIC_APP_BASE_URL` | **`https://jouw-domein.nl`** (zonder slash aan het eind; zo staan links in mail goed) |
+| `SMTP_HOST` | bijv. `smtp.gmail.com` |
+| `SMTP_PORT` | `465` (Gmail SSL) of `587` (STARTTLS) |
+| `SMTP_SECURE` | `true` bij poort 465, `false` bij 587 |
+| `SMTP_USER` | je Gmail-adres |
+| `SMTP_PASS` | Gmail **app-wachtwoord** (geen normaal wachtwoord) |
+| `MAIL_FROM` | bijv. `"SPL Planning <jouw@gmail.com>"` |
+
+Na elke wijziging: **Redeploy**. Controleer in TransIP dat het domein naar Vercel wijst (A/CNAME zoals Vercel aangeeft).
+
+Als `PUBLIC_APP_BASE_URL` leeg blijft, gebruikt de app op Vercel automatisch `VERCEL_URL` (vaak `*.vercel.app`). Voor nette links in mail: zet altijd je eigen domein in `PUBLIC_APP_BASE_URL`.
+
 ## Volgende stap voor productie
 
 - Medewerkersweergave toevoegen met publieke/platte deel-link per week

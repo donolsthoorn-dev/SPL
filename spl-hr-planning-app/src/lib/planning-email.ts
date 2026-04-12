@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { getIsoWeekNumber } from "@/lib/publieke-planning-renderer";
 import { createPublicPlanningToken } from "@/lib/public-planning-token";
 
 type Recipient = {
@@ -21,9 +22,14 @@ function getRequiredEnv(name: string): string {
 }
 
 function getPublicAppBaseUrl(): string {
-  const raw = process.env.PUBLIC_APP_BASE_URL || process.env.NEXT_PUBLIC_APP_URL;
+  const raw =
+    process.env.PUBLIC_APP_BASE_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null);
   if (!raw) {
-    throw new Error("PUBLIC_APP_BASE_URL ontbreekt in de server-configuratie.");
+    throw new Error(
+      "PUBLIC_APP_BASE_URL ontbreekt. Zet in Vercel Environment Variables je publieke URL (bijv. https://planning.jouwdomein.nl).",
+    );
   }
   return raw.replace(/\/+$/, "");
 }
@@ -48,7 +54,7 @@ export function buildPlanningPublishEmailHtml(args: {
           <img src="${args.logoUrl}" alt="SPL logo" width="200" height="64" style="display:inline-block;border:0;outline:none;text-decoration:none;" />
         </div>
         <div style="background:#ffffff;border:1px solid #c9deeb;border-radius:12px;padding:22px;box-shadow:0 6px 16px rgba(36,95,130,0.12);">
-          <h2 style="margin:0 0 12px;color:#1f2a37;">Nieuwe planning staat klaar</h2>
+          <h2 style="margin:0 0 12px;color:#1f2a37;">Er staat een nieuwe planning klaar</h2>
           <p style="margin:0 0 10px;color:#1f2a37;line-height:1.55;">Beste ${args.recipientName},</p>
           <p style="margin:0 0 10px;color:#1f2a37;line-height:1.55;">
             Er is een nieuwe planning gepubliceerd: <strong>${args.planTitle}</strong> (week van ${args.weekStart}).
@@ -79,6 +85,7 @@ export async function sendPlanningPublishEmails(args: SendPlanningPublishEmailsA
   const user = getRequiredEnv("SMTP_USER");
   const pass = getRequiredEnv("SMTP_PASS");
   const from = getRequiredEnv("MAIL_FROM");
+  const replyTo = process.env.MAIL_REPLY_TO?.trim() || undefined;
   const baseUrl = getPublicAppBaseUrl();
   const logoUrl = `${baseUrl}/mail/spl-logo.png`;
   const secure = String(process.env.SMTP_SECURE || "false") === "true";
@@ -104,8 +111,9 @@ export async function sendPlanningPublishEmails(args: SendPlanningPublishEmailsA
     });
     await transporter.sendMail({
       from,
+      ...(replyTo ? { replyTo } : {}),
       to: recipient.email,
-      subject: `Nieuwe planning beschikbaar - week ${args.weekStart}`,
+      subject: `Nieuwe planning beschikbaar - week ${getIsoWeekNumber(args.weekStart)}`,
       html,
     });
     sent += 1;

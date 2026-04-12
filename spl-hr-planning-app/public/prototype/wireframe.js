@@ -43,6 +43,20 @@ function addDaysToIsoDate(iso, deltaDays) {
   return formatIsoDateLocal(dt);
 }
 
+/** ISO-weeknummer (1–53), EU-conventie. */
+function getIsoWeekNumber(dateStr) {
+  const date = parseIsoDateLocal(dateStr);
+  const target = new Date(date.getTime());
+  const dayNr = (date.getDay() + 6) % 7;
+  target.setDate(target.getDate() - dayNr + 3);
+  const firstThursday = target.getTime();
+  target.setMonth(0, 1);
+  if (target.getDay() !== 4) {
+    target.setMonth(0, 1 + ((4 - target.getDay() + 7) % 7));
+  }
+  return 1 + Math.ceil((firstThursday - target.getTime()) / 604800000);
+}
+
 let planningBootDone = false;
 let __weekPersistTimer = null;
 
@@ -511,7 +525,7 @@ function isOpenFromPeriods(locationId, weekday, dayPart, weekStart) {
 function renderContextControls() {
   const isPlanning = state.activePanel === "locationPlanningPanel" || state.activePanel === "employeePlanningPanel" || state.activePanel === "publicPanel";
   if (isPlanning) {
-    const weekLabel = `Week van ${formatWeekStart(state.weekStart)}`;
+    const weekLabel = `Week ${getIsoWeekNumber(state.weekStart)} (week van ${formatWeekStart(state.weekStart)})`;
     if (state.published) {
       contextMetaEl.innerHTML = `${weekLabel} — <span class="published-status-inline"><span class="published-check" aria-hidden="true">✓</span> Gepubliceerd</span>`;
     } else {
@@ -573,7 +587,9 @@ function syncPublicWeekSelectOptions() {
   const options = ['<option value="">Gepubliceerde week...</option>'];
   state.publishedWeeks.forEach((weekStart) => {
     const selected = weekStart === state.weekStart ? " selected" : "";
-    options.push(`<option value="${weekStart}"${selected}>Week van ${formatWeekStart(weekStart)}</option>`);
+    options.push(
+      `<option value="${weekStart}"${selected}>Week ${getIsoWeekNumber(weekStart)} (week van ${formatWeekStart(weekStart)})</option>`
+    );
   });
   publicWeekSelectEl.innerHTML = options.join("");
   publicWeekSelectEl.disabled = state.publishedWeeks.length === 0;
@@ -1625,7 +1641,7 @@ function exportPublicPdf() {
   if (!state.published) return;
   const mode = getPublicExportMode();
   const matrix = mode === "employee" ? buildPublicEmployeeExportMatrix() : buildPublicLocationExportMatrix();
-  const title = `SPL planning week ${formatWeekStart(state.weekStart)} — ${
+  const title = `SPL planning week ${getIsoWeekNumber(state.weekStart)} — ${
     mode === "employee" ? "per medewerker" : "per locatie"
   }`;
   const inner = matrixToHtmlTable(matrix);

@@ -7,7 +7,8 @@ import {
   buildPublicEmployeeTableHtml,
   buildPublicLocationMatrix,
   buildPublicLocationTableHtml,
-  formatWeekStartNl,
+  formatWeekPlanLabelNl,
+  getIsoWeekNumber,
   matrixToCsvSemicolon,
   matrixToHtmlTable,
 } from "@/lib/publieke-planning-renderer";
@@ -44,26 +45,30 @@ function escapeHtmlForPdfTitle(s: string): string {
 
 export default function PubliekePlanningClient({
   snapshot,
+  personalPlanning,
   restrictedEmployeeName,
   weekNav,
 }: {
   snapshot: PubliekePlanningSnapshot;
+  /** Persoonlijke token-link (medewerker), los van of de naam in stamdata gezet is. */
+  personalPlanning?: boolean;
   restrictedEmployeeName?: string;
   weekNav?: PersonalPlanningWeekNav;
 }) {
-  const [mode, setMode] = useState<"location" | "employee">(restrictedEmployeeName ? "employee" : "location");
-  const effectiveMode = restrictedEmployeeName ? "employee" : mode;
+  const [mode, setMode] = useState<"location" | "employee">(personalPlanning ? "employee" : "location");
+  const effectiveMode = personalPlanning ? "employee" : mode;
 
-  const pageHeading = restrictedEmployeeName
-    ? `Persoonlijke planning — week van ${formatWeekStartNl(snapshot.weekStart)}`
-    : `Publieke inzage — week van ${formatWeekStartNl(snapshot.weekStart)}`;
+  const weekPlanLabel = formatWeekPlanLabelNl(snapshot.weekStart);
+  const pageHeading = personalPlanning
+    ? `Persoonlijke planning — ${weekPlanLabel}`
+    : `Publieke inzage — ${weekPlanLabel}`;
 
   useEffect(() => {
-    const weekLabel = formatWeekStartNl(snapshot.weekStart);
-    document.title = restrictedEmployeeName
-      ? `Persoonlijke planning — week van ${weekLabel} | SPL`
-      : `Publieke planning — week van ${weekLabel} | SPL`;
-  }, [restrictedEmployeeName, snapshot.weekStart]);
+    const label = formatWeekPlanLabelNl(snapshot.weekStart);
+    document.title = personalPlanning
+      ? `Persoonlijke planning — ${label} | SPL`
+      : `Publieke planning — ${label} | SPL`;
+  }, [personalPlanning, snapshot.weekStart]);
 
   const tableHtml = useMemo(() => {
     const s = {
@@ -96,7 +101,7 @@ export default function PubliekePlanningClient({
       assignments: snapshot.assignments,
     };
     const matrix = effectiveMode === "employee" ? buildPublicEmployeeMatrix(s) : buildPublicLocationMatrix(s);
-    const title = `SPL planning week ${formatWeekStartNl(snapshot.weekStart)} — ${
+    const title = `SPL planning week ${getIsoWeekNumber(snapshot.weekStart)} — ${
       effectiveMode === "employee" ? "per medewerker" : "per locatie"
     }`;
     const inner = matrixToHtmlTable(matrix);
@@ -131,13 +136,13 @@ export default function PubliekePlanningClient({
         <div className="panel-header">
           <h3>{pageHeading}</h3>
           <div className="header-actions">
-            {restrictedEmployeeName && weekNav && (weekNav.prev || weekNav.next) ? (
+            {personalPlanning && weekNav && (weekNav.prev || weekNav.next) ? (
               <nav className="pp-week-nav" aria-label="Andere gepubliceerde weken">
                 {weekNav.prev ? (
                   <button
                     type="button"
                     className="ghost-btn"
-                    title={`Week van ${formatWeekStartNl(weekNav.prev.weekStart)}`}
+                    title={formatWeekPlanLabelNl(weekNav.prev.weekStart)}
                     onClick={() => {
                       window.location.assign(weekNav.prev!.href);
                     }}
@@ -149,7 +154,7 @@ export default function PubliekePlanningClient({
                   <button
                     type="button"
                     className="ghost-btn"
-                    title={`Week van ${formatWeekStartNl(weekNav.next.weekStart)}`}
+                    title={formatWeekPlanLabelNl(weekNav.next.weekStart)}
                     onClick={() => {
                       window.location.assign(weekNav.next!.href);
                     }}
@@ -162,7 +167,7 @@ export default function PubliekePlanningClient({
             <select
               id="publicModeSelect"
               value={effectiveMode}
-              disabled={Boolean(restrictedEmployeeName)}
+              disabled={Boolean(personalPlanning)}
               onChange={(e) => setMode(e.target.value as "location" | "employee")}
               aria-label="Weergave"
             >
@@ -178,8 +183,10 @@ export default function PubliekePlanningClient({
           </div>
         </div>
         <div className="note pp-muted" style={{ marginBottom: "0.75rem" }}>
-          {restrictedEmployeeName
-            ? `Persoonlijke alleen-lezen weergave voor ${restrictedEmployeeName}.`
+          {personalPlanning
+            ? restrictedEmployeeName?.trim()
+              ? `Persoonlijke alleen-lezen weergave voor ${restrictedEmployeeName.trim()}.`
+              : "Persoonlijke alleen-lezen weergave."
             : "Alleen-lezen weergave van de gepubliceerde planning. Kies per locatie of per medewerker."}
         </div>
         <div className="table-wrap">

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchWeekState } from "@/lib/planning-data";
+import { getIsoWeekNumber } from "@/lib/publieke-planning-renderer";
 import { requirePlanningApiUser } from "@/lib/planning-api-auth";
 import { sendPlanningPublishEmails } from "@/lib/planning-email";
 
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
 
     const result = await sendPlanningPublishEmails({
       weekStart,
-      planTitle: `SPL planning week ${weekStart}`,
+      planTitle: `SPL planning week ${getIsoWeekNumber(weekStart)}`,
       notes: null,
       recipients,
     });

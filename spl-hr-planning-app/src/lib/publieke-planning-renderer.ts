@@ -39,6 +39,25 @@ export function formatWeekStartNl(dateStr: string): string {
   return `${dd}-${mm}-${yyyy}`;
 }
 
+/** ISO-weeknummer (1–53) voor de kalenderdatum van `dateStr` (lokale tijd). */
+export function getIsoWeekNumber(dateStr: string): number {
+  const date = parseIsoDateLocal(dateStr);
+  const target = new Date(date.getTime());
+  const dayNr = (date.getDay() + 6) % 7;
+  target.setDate(target.getDate() - dayNr + 3);
+  const firstThursday = target.getTime();
+  target.setMonth(0, 1);
+  if (target.getDay() !== 4) {
+    target.setMonth(0, 1 + ((4 - target.getDay() + 7) % 7));
+  }
+  return 1 + Math.ceil((firstThursday - target.getTime()) / 604800000);
+}
+
+/** Bijv. "Week 16 (week van 13-04-2026)" voor kopregels en context. */
+export function formatWeekPlanLabelNl(weekStartIso: string): string {
+  return `Week ${getIsoWeekNumber(weekStartIso)} (week van ${formatWeekStartNl(weekStartIso)})`;
+}
+
 function getIsoDateForWeekday(weekStart: string, weekday: number): string {
   return addDaysToIsoDate(weekStart, weekday - 1);
 }
