@@ -91,6 +91,7 @@ async function switchToWeek(weekStart) {
   planningBootDone = true;
   renderContextControls();
   renderPlanningTables();
+  renderLocationList();
   renderPublicTable();
   await refreshPublicEmailState();
   renderConflictsAndSuggestions();
@@ -529,6 +530,29 @@ function isOpenFromPeriods(locationId, weekday, dayPart, weekStart) {
   });
 }
 
+function isLocationOpenWeekday(locationId, weekday, weekStart) {
+  return (
+    isOpenFromPeriods(locationId, weekday, "ochtend", weekStart) ||
+    isOpenFromPeriods(locationId, weekday, "middag", weekStart)
+  );
+}
+
+/** HTML voor Ma–Vr in locatie-overzicht o.b.v. gekozen planweek (`state.weekStart`). */
+function renderLocationListWeekdayCells(locationId) {
+  const ws = state.weekStart;
+  const dayTitles = ["Maandag", "Dinsdag", "Woensdag", "Donderdag", "Vrijdag"];
+  let cells = "";
+  for (let weekday = 1; weekday <= 5; weekday++) {
+    const open = isLocationOpenWeekday(locationId, weekday, ws);
+    if (open) {
+      cells += `<td class="loc-list-day loc-list-day--open" title="${dayTitles[weekday - 1]} open" aria-label="${dayTitles[weekday - 1]}: open"><span class="loc-list-check" aria-hidden="true">\u2713</span></td>`;
+    } else {
+      cells += `<td class="loc-list-day loc-list-day--closed" title="${dayTitles[weekday - 1]}: gesloten" aria-label="${dayTitles[weekday - 1]}: gesloten">-</td>`;
+    }
+  }
+  return cells;
+}
+
 function renderContextControls() {
   const isPlanning = state.activePanel === "locationPlanningPanel" || state.activePanel === "employeePlanningPanel" || state.activePanel === "publicPanel";
   if (isPlanning) {
@@ -782,6 +806,13 @@ function compareNumeric(a, b, dir) {
   return dir === "asc" ? cmp : -cmp;
 }
 
+/** Lege / ontbrekende e-mail sorteert als lege string. */
+function compareEmailField(a, b, dir) {
+  const sa = a != null && String(a).trim() ? String(a).trim() : "";
+  const sb = b != null && String(b).trim() ? String(b).trim() : "";
+  return compareLocale(sa, sb, dir);
+}
+
 function sortThClass(activeKey, colKey, dir) {
   if (activeKey !== colKey) return "sortable-th";
   return `sortable-th sorted sorted-${dir}`;
@@ -830,19 +861,34 @@ function renderAbsenceReasonLabel(reason) {
 
 function renderLocationList() {
   const { key, dir } = state.locationListSort;
+  const ws = state.weekStart;
+  const dayKeyToWeekday = { ma: 1, di: 2, wo: 3, do: 4, vr: 5 };
   const sorted = [...locations].sort((a, b) => {
     if (key === "place") return compareLocale(a.place, b.place, dir);
+    if (key === "email") return compareEmailField(a.email, b.email, dir);
+    const wd = dayKeyToWeekday[key];
+    if (wd) {
+      const va = isLocationOpenWeekday(a.id, wd, ws) ? 1 : 0;
+      const vb = isLocationOpenWeekday(b.id, wd, ws) ? 1 : 0;
+      return compareNumeric(va, vb, dir);
+    }
     return compareLocale(a.name, b.name, dir);
   });
   let html = `<thead><tr>
     <th class="${sortThClass(key, "name", dir)}" data-sort-loc="name" scope="col">Naam locatie<span class="sort-indicator" aria-hidden="true"></span></th>
-    <th scope="col">E-mail</th>
+    <th class="${sortThClass(key, "email", dir)} loc-list-email-col" data-sort-loc="email" scope="col">E-mail<span class="sort-indicator" aria-hidden="true"></span></th>
+    <th class="${sortThClass(key, "ma", dir)} loc-list-day-th" data-sort-loc="ma" scope="col" title="Maandag (gekozen week)">Ma<span class="sort-indicator" aria-hidden="true"></span></th>
+    <th class="${sortThClass(key, "di", dir)} loc-list-day-th" data-sort-loc="di" scope="col" title="Dinsdag (gekozen week)">Di<span class="sort-indicator" aria-hidden="true"></span></th>
+    <th class="${sortThClass(key, "wo", dir)} loc-list-day-th" data-sort-loc="wo" scope="col" title="Woensdag (gekozen week)">Wo<span class="sort-indicator" aria-hidden="true"></span></th>
+    <th class="${sortThClass(key, "do", dir)} loc-list-day-th" data-sort-loc="do" scope="col" title="Donderdag (gekozen week)">Do<span class="sort-indicator" aria-hidden="true"></span></th>
+    <th class="${sortThClass(key, "vr", dir)} loc-list-day-th" data-sort-loc="vr" scope="col" title="Vrijdag (gekozen week)">Vr<span class="sort-indicator" aria-hidden="true"></span></th>
     <th class="${sortThClass(key, "place", dir)}" data-sort-loc="place" scope="col">Plaats<span class="sort-indicator" aria-hidden="true"></span></th>
   </tr></thead><tbody>`;
   sorted.forEach((loc) => {
     const emailRaw = loc.email && String(loc.email).trim();
     const emailCell = emailRaw ? escapeHtmlForExport(emailRaw) : "-";
-    html += `<tr class="clickable-row" data-location-detail="${loc.id}"><td>${loc.name}</td><td>${emailCell}</td><td>${loc.place}</td></tr>`;
+    const dayCells = renderLocationListWeekdayCells(loc.id);
+    html += `<tr class="clickable-row" data-location-detail="${loc.id}"><td>${loc.name}</td><td>${emailCell}</td>${dayCells}<td>${loc.place}</td></tr>`;
   });
   html += "</tbody>";
   locationListTableEl.innerHTML = html;
@@ -871,13 +917,14 @@ function renderLocationList() {
 function renderEmployeeList() {
   const { key, dir } = state.employeeListSort;
   const sorted = [...employees].sort((a, b) => {
+    if (key === "email") return compareEmailField(a.email, b.email, dir);
     if (key === "contractType") return compareLocale(a.contractType, b.contractType, dir);
     if (key === "weekHours") return compareNumeric(a.weekHours, b.weekHours, dir);
     return compareLocale(a.name, b.name, dir);
   });
   let html = `<thead><tr>
     <th class="${sortThClass(key, "name", dir)}" data-sort-emp="name" scope="col">Naam medewerker<span class="sort-indicator" aria-hidden="true"></span></th>
-    <th scope="col">E-mail</th>
+    <th class="${sortThClass(key, "email", dir)}" data-sort-emp="email" scope="col">E-mail<span class="sort-indicator" aria-hidden="true"></span></th>
     <th class="${sortThClass(key, "contractType", dir)}" data-sort-emp="contractType" scope="col">Contracttype<span class="sort-indicator" aria-hidden="true"></span></th>
     <th class="${sortThClass(key, "weekHours", dir)}" data-sort-emp="weekHours" scope="col">Uren per week<span class="sort-indicator" aria-hidden="true"></span></th>
   </tr></thead><tbody>`;

@@ -519,6 +519,41 @@ button {
   content: "▼";
 }
 
+/* Locatie-overzicht: compacte weekdagen (obv. gekozen planweek) */
+.schedule-table th.loc-list-email-col {
+  min-width: 7rem;
+}
+
+.schedule-table th.loc-list-day-th {
+  text-align: center;
+  width: 2.5rem;
+  min-width: 2.25rem;
+  padding-left: 4px;
+  padding-right: 4px;
+  white-space: nowrap;
+}
+
+.schedule-table td.loc-list-day {
+  text-align: center;
+  vertical-align: middle;
+  width: 2.5rem;
+  min-width: 2.25rem;
+  padding: 6px 4px;
+  color: #5a6b7a;
+}
+
+.schedule-table td.loc-list-day--open .loc-list-check {
+  display: inline-block;
+  color: #1b5e20;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.schedule-table td.loc-list-day--closed {
+  color: #8b97a3;
+}
+
 .schedule-table th .weekday-header-day,
 .schedule-table th .weekday-header-date {
   display: block;
