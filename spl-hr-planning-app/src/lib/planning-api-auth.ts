@@ -16,11 +16,15 @@ export async function requirePlanningApiUser(): Promise<
     return { ok: false, response: NextResponse.json({ error: "Niet ingelogd" }, { status: 401 }) };
   }
 
-  const { data: adminUser } = await supabase
+  const { data: adminUser, error: adminErr } = await supabase
     .from("admin_users")
     .select("user_id")
     .eq("user_id", user.id)
     .maybeSingle();
+
+  if (adminErr) {
+    return { ok: false, response: NextResponse.json({ error: "Admincontrole mislukt" }, { status: 500 }) };
+  }
 
   if (!adminUser) {
     return { ok: false, response: NextResponse.json({ error: "Geen admin" }, { status: 403 }) };

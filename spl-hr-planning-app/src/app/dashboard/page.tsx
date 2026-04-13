@@ -5,6 +5,8 @@ import { createActionClient, createClient } from "@/lib/supabase/server";
 import { WeeklyPlan } from "@/lib/types";
 import { requireAdmin } from "@/lib/require-admin";
 
+export const dynamic = "force-dynamic";
+
 const planSchema = z.object({
   week_start: z.string().min(10),
   title: z.string().min(3).max(120),

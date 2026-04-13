@@ -311,6 +311,34 @@ function getAssignmentsForCell(locationId, weekday, dayPart) {
   return state.assignments.filter((a) => a.locationId === locationId && a.weekday === weekday && a.dayPart === dayPart);
 }
 
+function buildAssignmentIndexes(assignments) {
+  const byCell = new Map();
+  const byEmployeeWeekday = new Map();
+  const countByEmployee = new Map();
+
+  assignments.forEach((a) => {
+    const cellKey = `${a.locationId}|${a.weekday}|${a.dayPart}`;
+    const empDayKey = `${a.employeeId}|${a.weekday}`;
+    if (!byCell.has(cellKey)) byCell.set(cellKey, []);
+    if (!byEmployeeWeekday.has(empDayKey)) byEmployeeWeekday.set(empDayKey, []);
+    byCell.get(cellKey).push(a);
+    byEmployeeWeekday.get(empDayKey).push(a);
+    countByEmployee.set(a.employeeId, (countByEmployee.get(a.employeeId) || 0) + 1);
+  });
+
+  return {
+    getCell(locationId, weekday, dayPart) {
+      return byCell.get(`${locationId}|${weekday}|${dayPart}`) || [];
+    },
+    getEmployeeDay(employeeId, weekday) {
+      return byEmployeeWeekday.get(`${employeeId}|${weekday}`) || [];
+    },
+    getEmployeeHours(employeeId) {
+      return (countByEmployee.get(employeeId) || 0) * 4.5;
+    }
+  };
+}
+
 function isEmployeeAbsentInCurrentWeek(employee) {
   const weekEnd = addDaysToIsoDate(state.weekStart, 4);
   return (employee.absences || []).some((a) => a.date >= state.weekStart && a.date <= weekEnd);
@@ -1274,6 +1302,7 @@ function addEmployeeAbsenceDraftRow(dateValue = "", reasonValue = "Ziek") {
 }
 
 function renderPlanningTables() {
+  const assignmentIndex = buildAssignmentIndexes(state.assignments);
   const planningLocations = locations;
   let locationHtml = "<thead><tr><th>Locatie / Dagdeel</th>";
   [1, 2, 3, 4, 5].forEach((weekday) => (locationHtml += `<th>${getWeekdayHeaderLabel(weekday)}</th>`));
@@ -1292,7 +1321,7 @@ function renderPlanningTables() {
           locationHtml += `<td class="planning-cell closed" data-closed="true">Gesloten</td>`;
           return;
         }
-        const ass = getAssignmentsForCell(loc.id, weekday, dayPart);
+        const ass = assignmentIndex.getCell(loc.id, weekday, dayPart);
         const hasDoubleBookingConflict = ass.some((a) =>
           hasDuplicateTimeslotAssignment(a.employeeId, weekday, dayPart, loc.id)
         );
@@ -1347,7 +1376,7 @@ function renderPlanningTables() {
       "cell-employee-contract-icon cell-employee-contract-icon--dark"
     )}${emp.name}</span></td>`;
     [1, 2, 3, 4, 5].forEach((weekday) => {
-      const dayAssignments = state.assignments.filter((a) => a.employeeId === emp.id && a.weekday === weekday);
+      const dayAssignments = assignmentIndex.getEmployeeDay(emp.id, weekday);
       const isSickDay = isEmployeeSickForWeekday(emp, weekday);
       const isLeaveDay = isEmployeeOnLeaveForWeekday(emp, weekday);
       const day = dayAssignments
@@ -1383,7 +1412,7 @@ function renderPlanningTables() {
       const cellContent = day || (isEmptyButAvailable ? "Beschikbaar" : "Afwezig");
       employeeHtml += `<td data-employee-cell="true" data-planable="${isPlanableDay}" data-employee="${emp.id}" data-weekday="${weekday}" class="${dayClass}">${sickBadge}${leaveBadge}${cellContent}</td>`;
     });
-    const total = state.assignments.filter((a) => a.employeeId === emp.id).length * 4.5;
+    const total = assignmentIndex.getEmployeeHours(emp.id);
     const totalClass = total > emp.weekHours ? "danger" : total === emp.weekHours ? "ok" : "";
     employeeHtml += `<td class="${totalClass}">${total}u / ${emp.weekHours}u</td></tr>`;
   });
@@ -1835,6 +1864,7 @@ function buildPublicLocationViewHtml() {
 }
 
 function buildPublicEmployeeViewHtml() {
+  const assignmentIndex = buildAssignmentIndexes(state.assignments);
   let employeeHtml = "<thead><tr><th>Medewerker</th>";
   for (let weekday = 1; weekday <= 5; weekday++) {
     employeeHtml += `<th>${getWeekdayHeaderLabel(weekday)}</th>`;
@@ -1845,7 +1875,7 @@ function buildPublicEmployeeViewHtml() {
     .forEach((emp) => {
     employeeHtml += `<tr><td>${escapeHtmlForExport(emp.name)}</td>`;
     for (let weekday = 1; weekday <= 5; weekday++) {
-      const dayAssignments = state.assignments.filter((a) => a.employeeId === emp.id && a.weekday === weekday);
+      const dayAssignments = assignmentIndex.getEmployeeDay(emp.id, weekday);
       const day = dayAssignments
         .map(
           (a) => {
@@ -1863,7 +1893,7 @@ function buildPublicEmployeeViewHtml() {
       const cellInner = day || (isEmptyButAvailable ? "Beschikbaar" : "Afwezig");
       employeeHtml += `<td class="${dayClass}">${cellInner}</td>`;
     }
-    const total = state.assignments.filter((a) => a.employeeId === emp.id).length * 4.5;
+    const total = assignmentIndex.getEmployeeHours(emp.id);
     employeeHtml += `<td>${total}u / ${emp.weekHours}u</td></tr>`;
   });
   employeeHtml += "</tbody>";

@@ -91,7 +91,18 @@ export async function POST(request: NextRequest) {
       notes: null,
       recipients,
     });
-    return NextResponse.json({ ok: true, sent: result.sent });
+    if (result.sent === 0 && result.failed > 0) {
+      return NextResponse.json(
+        { error: "Geen e-mails verzonden.", sent: 0, failed: result.failed, failures: result.failures.slice(0, 5) },
+        { status: 502 },
+      );
+    }
+    return NextResponse.json({
+      ok: true,
+      sent: result.sent,
+      failed: result.failed,
+      failures: result.failures.slice(0, 5),
+    });
   } catch (e) {
     const message = mapEmailSendError(e);
     return NextResponse.json({ error: message }, { status: 500 });

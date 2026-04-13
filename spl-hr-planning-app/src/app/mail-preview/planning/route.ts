@@ -1,6 +1,12 @@
 import { buildPlanningPublishEmailHtml } from "@/lib/planning-email";
+import { requirePlanningApiUser } from "@/lib/planning-api-auth";
 
 export async function GET() {
+  if (process.env.NODE_ENV !== "development") {
+    const auth = await requirePlanningApiUser();
+    if (!auth.ok) return auth.response;
+  }
+
   const html = buildPlanningPublishEmailHtml({
     recipientName: "Voorbeeld medewerker",
     weekStart: "2026-04-13",

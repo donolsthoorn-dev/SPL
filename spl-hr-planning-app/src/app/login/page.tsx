@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createActionClient } from "@/lib/supabase/server";
 
+export const dynamic = "force-dynamic";
+
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
