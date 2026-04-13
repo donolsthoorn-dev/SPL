@@ -836,10 +836,13 @@ function renderLocationList() {
   });
   let html = `<thead><tr>
     <th class="${sortThClass(key, "name", dir)}" data-sort-loc="name" scope="col">Naam locatie<span class="sort-indicator" aria-hidden="true"></span></th>
+    <th scope="col">E-mail</th>
     <th class="${sortThClass(key, "place", dir)}" data-sort-loc="place" scope="col">Plaats<span class="sort-indicator" aria-hidden="true"></span></th>
   </tr></thead><tbody>`;
   sorted.forEach((loc) => {
-    html += `<tr class="clickable-row" data-location-detail="${loc.id}"><td>${loc.name}</td><td>${loc.place}</td></tr>`;
+    const emailRaw = loc.email && String(loc.email).trim();
+    const emailCell = emailRaw ? escapeHtmlForExport(emailRaw) : "-";
+    html += `<tr class="clickable-row" data-location-detail="${loc.id}"><td>${loc.name}</td><td>${emailCell}</td><td>${loc.place}</td></tr>`;
   });
   html += "</tbody>";
   locationListTableEl.innerHTML = html;
@@ -874,11 +877,14 @@ function renderEmployeeList() {
   });
   let html = `<thead><tr>
     <th class="${sortThClass(key, "name", dir)}" data-sort-emp="name" scope="col">Naam medewerker<span class="sort-indicator" aria-hidden="true"></span></th>
+    <th scope="col">E-mail</th>
     <th class="${sortThClass(key, "contractType", dir)}" data-sort-emp="contractType" scope="col">Contracttype<span class="sort-indicator" aria-hidden="true"></span></th>
     <th class="${sortThClass(key, "weekHours", dir)}" data-sort-emp="weekHours" scope="col">Uren per week<span class="sort-indicator" aria-hidden="true"></span></th>
   </tr></thead><tbody>`;
   sorted.forEach((emp) => {
-    html += `<tr class="clickable-row" data-employee-detail="${emp.id}"><td>${emp.name}</td><td>${renderContractTypeLabel(emp.contractType)}</td><td>${emp.weekHours}</td></tr>`;
+    const emailRaw = emp.email && String(emp.email).trim();
+    const emailCell = emailRaw ? escapeHtmlForExport(emailRaw) : "-";
+    html += `<tr class="clickable-row" data-employee-detail="${emp.id}"><td>${emp.name}</td><td>${emailCell}</td><td>${renderContractTypeLabel(emp.contractType)}</td><td>${emp.weekHours}</td></tr>`;
   });
   html += "</tbody>";
   employeeListTableEl.innerHTML = html;
