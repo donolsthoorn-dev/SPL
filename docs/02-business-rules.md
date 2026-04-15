@@ -7,7 +7,7 @@ Dit document legt de definitieve harde en zachte regels vast voor planning, cont
 - Dagdelen: `ochtend`, `middag`.
 - Werkweek: maandag tot en met vrijdag.
 - Doelbezetting per open dagdeel per locatie: minimaal 3, maximaal 4 medewerkers.
-- Contracttypen: `vast`, `inval`.
+- Contracttypen: `vast`, `oproepkracht`.
 
 ## 2. Harde regels (must-pass)
 
@@ -34,7 +34,7 @@ Zachte regels sturen de suggestie-engine, maar blokkeren niet.
 
 1. Vaste locatie + vast dagdeel heeft sterke voorkeur.
 2. Vaste locatie heeft voorkeur boven niet-vaste locatie.
-3. Vaste kracht heeft voorkeur boven invalkracht als beide geschikt zijn.
+3. Vaste kracht heeft voorkeur boven oproepkracht als beide geschikt zijn.
 4. Medewerker met onderplanning krijgt voorrang.
 5. Stabiliteit: voorkom onnodige wisselingen van week op week.
 
@@ -83,4 +83,4 @@ Elke voorgestelde medewerker bevat redencodes, bijvoorbeeld:
 - `fixed_location_match`
 - `underplanned_hours`
 - `stable_assignment`
-- `fallback_inval`
+- `fallback_oproepkracht`

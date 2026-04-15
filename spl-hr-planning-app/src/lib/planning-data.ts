@@ -38,6 +38,11 @@ export type WireframeAssignment = {
   employeeId: string;
 };
 
+export function normalizeContractType(contractType?: string | null): string {
+  if (contractType === "Inval") return "OproepKracht";
+  return contractType || "Vast";
+}
+
 /** Zelfde stamdata als het oorspronkelijke prototype (wireframe.js). */
 export function buildPrototypeMasterData(): {
   locations: WireframeLocation[];
@@ -217,7 +222,7 @@ export function buildPrototypeMasterData(): {
     id: `emp_${i + 1}`,
     name,
     email: undefined,
-    contractType: i % 6 === 0 ? "Inval" : "Vast",
+    contractType: i % 6 === 0 ? "OproepKracht" : "Vast",
     weekHours: i % 5 === 0 ? 18 : 22.5,
     endDate: "",
     days: defaultDayPatterns[i % defaultDayPatterns.length]!,
@@ -276,7 +281,7 @@ export async function seedPlanningIfEmpty(supabase: SupabaseClient): Promise<boo
       .insert({
         name: emp.name,
         email: emp.email || null,
-        contract_type: emp.contractType,
+        contract_type: normalizeContractType(emp.contractType),
         week_hours: emp.weekHours,
         end_date: emp.endDate || null,
         days: emp.days,
@@ -355,7 +360,7 @@ export async function fetchMasterWireframe(supabase: SupabaseClient): Promise<{
     id: row.id,
     name: row.name,
     email: row.email ?? undefined,
-    contractType: row.contract_type,
+    contractType: normalizeContractType(row.contract_type),
     weekHours: Number(row.week_hours),
     endDate: row.end_date ?? "",
     days: row.days,

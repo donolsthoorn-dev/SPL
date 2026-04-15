@@ -785,13 +785,13 @@ button {
   color: #1f6b35;
 }
 
-.contract-type-label--inval {
+.contract-type-label--oproep-kracht {
   background: #eef9fd;
   border-color: #b8e7f5;
   color: #0b7d9a;
 }
 
-.contract-type-label--inval i {
+.contract-type-label--oproep-kracht i {
   color: #0b7d9a;
 }
 

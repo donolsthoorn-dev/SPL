@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { requirePlanningApiUser } from "@/lib/planning-api-auth";
+import { normalizeContractType } from "@/lib/planning-data";
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -52,12 +53,13 @@ export async function PATCH(
   }
 
   try {
+    const contractType = normalizeContractType(parsed.data.contractType);
     const { error: uErr } = await auth.supabase
       .from("spl_employees")
       .update({
         name: parsed.data.name,
         email: parsed.data.email || null,
-        contract_type: parsed.data.contractType,
+        contract_type: contractType,
         week_hours: parsed.data.weekHours,
         end_date: parsed.data.endDate || null,
         days: parsed.data.days,

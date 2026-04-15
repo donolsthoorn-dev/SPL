@@ -37,7 +37,7 @@ create table if not exists location_opening_slots (
 create table if not exists employees (
   id uuid primary key default gen_random_uuid(),
   full_name text not null,
-  contract_type text not null check (contract_type in ('vast', 'inval')),
+  contract_type text not null check (contract_type in ('vast', 'oproepkracht')),
   is_active boolean not null default true,
   max_hours_per_week numeric(4,2) not null default 22.5 check (max_hours_per_week >= 0),
   max_hours_per_day numeric(4,2) not null default 4.5 check (max_hours_per_day >= 0),

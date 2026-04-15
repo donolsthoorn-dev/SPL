@@ -41,7 +41,7 @@ create table if not exists public.spl_employees (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   email text,
-  contract_type text not null,
+  contract_type text not null check (contract_type in ('Vast', 'OproepKracht')),
   week_hours numeric not null,
   end_date date,
   days int[] not null,

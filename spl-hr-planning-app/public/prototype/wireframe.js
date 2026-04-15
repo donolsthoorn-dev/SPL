@@ -850,8 +850,8 @@ function renderContractTypeLabel(contractType) {
   if (contractType === "Vast") {
     return '<span class="contract-type-label contract-type-label--vast"><i class="fa-solid fa-user" aria-hidden="true"></i><span>Vast contract</span></span>';
   }
-  if (contractType === "Inval") {
-    return '<span class="contract-type-label contract-type-label--inval"><i class="fa-regular fa-user" aria-hidden="true"></i><span>Oproep kracht</span></span>';
+  if (contractType === "OproepKracht" || contractType === "Inval") {
+    return '<span class="contract-type-label contract-type-label--oproep-kracht"><i class="fa-regular fa-user" aria-hidden="true"></i><span>Oproep kracht</span></span>';
   }
   return contractType || "-";
 }
@@ -860,7 +860,7 @@ function renderContractTypeIcon(contractType) {
   if (contractType === "Vast") {
     return '<i class="fa-solid fa-user cell-employee-contract-icon" aria-hidden="true"></i>';
   }
-  if (contractType === "Inval") {
+  if (contractType === "OproepKracht" || contractType === "Inval") {
     return '<i class="fa-regular fa-user cell-employee-contract-icon" aria-hidden="true"></i>';
   }
   return "";
@@ -871,7 +871,7 @@ function renderAssistantContractIcon(employee) {
   if (employee.contractType === "Vast") {
     return '<i class="fa-solid fa-user assistant-contract-icon" aria-hidden="true"></i>';
   }
-  if (employee.contractType === "Inval") {
+  if (employee.contractType === "OproepKracht" || employee.contractType === "Inval") {
     return '<i class="fa-regular fa-user assistant-contract-icon" aria-hidden="true"></i>';
   }
   return "";

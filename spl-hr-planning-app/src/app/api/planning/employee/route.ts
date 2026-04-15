@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import type { WireframeEmployee } from "@/lib/planning-data";
+import { normalizeContractType, type WireframeEmployee } from "@/lib/planning-data";
 import { requirePlanningApiUser } from "@/lib/planning-api-auth";
 
 function getErrorMessage(error: unknown): string {
@@ -15,7 +15,7 @@ function getErrorMessage(error: unknown): string {
 const postSchema = z.object({
   name: z.string().min(1).max(200),
   email: z.email().optional().or(z.literal("")),
-  contractType: z.enum(["Vast", "Inval"]).optional(),
+  contractType: z.enum(["Vast", "OproepKracht", "Inval"]).optional(),
   weekHours: z.number().positive().max(60).optional(),
   endDate: z.string().optional(),
   days: z.array(z.number().int().min(1).max(5)).min(1).optional(),
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Ongeldige payload" }, { status: 400 });
   }
 
-  const contractType = parsed.data.contractType ?? "Vast";
+  const contractType = normalizeContractType(parsed.data.contractType);
   const weekHours = parsed.data.weekHours ?? 22.5;
   const endDate = parsed.data.endDate ?? "";
   const days = parsed.data.days ?? [1, 2, 3, 4, 5];
