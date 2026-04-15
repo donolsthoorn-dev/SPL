@@ -1451,7 +1451,6 @@ function renderPlanningTables() {
   [1, 2, 3, 4, 5].forEach((weekday) => (employeeHtml += `<th>${getWeekdayHeaderLabel(weekday)}</th>`));
   employeeHtml += "<th>Totaal</th></tr></thead><tbody>";
   sortEmployeesByNameAsc(employees)
-    .slice(0, 25)
     .forEach((emp) => {
     const employeeContractIcon = renderContractTypeIcon(emp.contractType);
     employeeHtml += `<tr><td><span class="employee-name-with-contract">${employeeContractIcon.replace(
@@ -1955,7 +1954,6 @@ function buildPublicEmployeeViewHtml() {
   }
   employeeHtml += "<th>Totaal</th></tr></thead><tbody>";
   sortEmployeesByNameAsc(employees)
-    .slice(0, 25)
     .forEach((emp) => {
     employeeHtml += `<tr><td>${escapeHtmlForExport(emp.name)}</td>`;
     for (let weekday = 1; weekday <= 5; weekday++) {
