@@ -851,7 +851,7 @@ function renderContractTypeLabel(contractType) {
     return '<span class="contract-type-label contract-type-label--vast"><i class="fa-solid fa-user" aria-hidden="true"></i><span>Vast contract</span></span>';
   }
   if (contractType === "Inval") {
-    return '<span class="contract-type-label contract-type-label--inval"><i class="fa-regular fa-user" aria-hidden="true"></i><span>Inval contract</span></span>';
+    return '<span class="contract-type-label contract-type-label--inval"><i class="fa-regular fa-user" aria-hidden="true"></i><span>Oproep kracht</span></span>';
   }
   return contractType || "-";
 }
