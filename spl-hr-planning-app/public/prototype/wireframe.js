@@ -885,6 +885,16 @@ function compareEmailField(a, b, dir) {
   return compareLocale(sa, sb, dir);
 }
 
+function getEmployeeActivePlanningEmail(employee) {
+  if (!employee || typeof employee !== "object") return "";
+  const prefersPrivate = employee.planningEmailIsPrivate !== false;
+  const preferredRaw = prefersPrivate ? employee.privateEmail : employee.email;
+  const fallbackRaw = prefersPrivate ? employee.email : employee.privateEmail;
+  const preferred = preferredRaw != null ? String(preferredRaw).trim() : "";
+  if (preferred) return preferred;
+  return fallbackRaw != null ? String(fallbackRaw).trim() : "";
+}
+
 function sortThClass(activeKey, colKey, dir) {
   if (activeKey !== colKey) return "sortable-th";
   return `sortable-th sorted sorted-${dir}`;
@@ -989,19 +999,19 @@ function renderLocationList() {
 function renderEmployeeList() {
   const { key, dir } = state.employeeListSort;
   const sorted = [...employees].sort((a, b) => {
-    if (key === "email") return compareEmailField(a.email, b.email, dir);
+    if (key === "email") return compareEmailField(getEmployeeActivePlanningEmail(a), getEmployeeActivePlanningEmail(b), dir);
     if (key === "contractType") return compareLocale(a.contractType, b.contractType, dir);
     if (key === "weekHours") return compareNumeric(a.weekHours, b.weekHours, dir);
     return compareLocale(a.name, b.name, dir);
   });
   let html = `<thead><tr>
     <th class="${sortThClass(key, "name", dir)}" data-sort-emp="name" scope="col">Naam medewerker<span class="sort-indicator" aria-hidden="true"></span></th>
-    <th class="${sortThClass(key, "email", dir)}" data-sort-emp="email" scope="col">E-mail<span class="sort-indicator" aria-hidden="true"></span></th>
+    <th class="${sortThClass(key, "email", dir)}" data-sort-emp="email" scope="col">Actief e-mailadres<span class="sort-indicator" aria-hidden="true"></span></th>
     <th class="${sortThClass(key, "contractType", dir)}" data-sort-emp="contractType" scope="col">Contracttype<span class="sort-indicator" aria-hidden="true"></span></th>
     <th class="${sortThClass(key, "weekHours", dir)}" data-sort-emp="weekHours" scope="col">Uren per week<span class="sort-indicator" aria-hidden="true"></span></th>
   </tr></thead><tbody>`;
   sorted.forEach((emp) => {
-    const emailRaw = emp.email && String(emp.email).trim();
+    const emailRaw = getEmployeeActivePlanningEmail(emp);
     const emailCell = emailRaw ? escapeHtmlForExport(emailRaw) : "-";
     html += `<tr class="clickable-row" data-employee-detail="${emp.id}"><td>${emp.name}</td><td>${emailCell}</td><td>${renderContractTypeLabel(emp.contractType)}</td><td>${emp.weekHours}</td></tr>`;
   });
@@ -1240,16 +1250,30 @@ function renderPreferredLocationShuttle(selectedIds) {
   const selectedEl = document.getElementById("employeeSelectedLocations");
   availableEl.innerHTML = "";
   selectedEl.innerHTML = "";
-  locations.forEach((location) => {
+  const selectedSet = new Set(selectedIds);
+  const selectedLocations = selectedIds
+    .map((id) => locations.find((location) => location.id === id))
+    .filter(Boolean);
+  const availableLocations = sortLocationsByNameAsc(locations.filter((location) => !selectedSet.has(location.id)));
+  selectedLocations.forEach((location) => {
     const option = document.createElement("option");
     option.value = location.id;
     option.textContent = `${location.name} (${location.place})`;
-    if (selectedIds.includes(location.id)) {
-      selectedEl.appendChild(option);
-    } else {
-      availableEl.appendChild(option);
-    }
+    selectedEl.appendChild(option);
   });
+  availableLocations.forEach((location) => {
+    const option = document.createElement("option");
+    option.value = location.id;
+    option.textContent = `${location.name} (${location.place})`;
+    availableEl.appendChild(option);
+  });
+}
+
+function sortSelectOptionsByText(selectEl) {
+  const options = Array.from(selectEl.options);
+  options.sort((a, b) => compareLocale(a.textContent || "", b.textContent || "", "asc"));
+  selectEl.innerHTML = "";
+  options.forEach((option) => selectEl.appendChild(option));
 }
 
 function moveSelectedOptions(fromEl, toEl) {
@@ -1258,6 +1282,9 @@ function moveSelectedOptions(fromEl, toEl) {
     option.selected = false;
     toEl.appendChild(option);
   });
+  if (toEl.id === "employeeAvailableLocations") {
+    sortSelectOptionsByText(toEl);
+  }
 }
 
 function moveOptionByDoubleClick(fromEl, toEl, event) {
@@ -1265,6 +1292,9 @@ function moveOptionByDoubleClick(fromEl, toEl, event) {
   const option = event.target;
   option.selected = false;
   toEl.appendChild(option);
+  if (toEl.id === "employeeAvailableLocations") {
+    sortSelectOptionsByText(toEl);
+  }
 }
 
 function syncAbsenceRemoveButtonsVisibility() {
@@ -1355,7 +1385,7 @@ function addEmployeeAbsenceDraftRow(dateValue = "", reasonValue = "Ziek") {
 
 function renderPlanningTables() {
   const assignmentIndex = buildAssignmentIndexes(state.assignments);
-  const planningLocations = locations;
+  const planningLocations = sortLocationsByNameAsc(locations);
   let locationHtml = "<thead><tr><th>Locatie / Dagdeel</th>";
   [1, 2, 3, 4, 5].forEach((weekday) => (locationHtml += `<th>${getWeekdayHeaderLabel(weekday)}</th>`));
   locationHtml += "</tr></thead><tbody>";

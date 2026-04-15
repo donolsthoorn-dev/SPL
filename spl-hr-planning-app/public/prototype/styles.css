@@ -923,6 +923,15 @@ button {
   font-size: 13px;
 }
 
+.form-grid .checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: end;
+  min-height: 36px;
+  line-height: 1.2;
+}
+
 .day-checkboxes {
   display: flex;
   gap: var(--space-2);
