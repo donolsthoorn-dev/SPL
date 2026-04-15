@@ -145,7 +145,12 @@
             <div class="inline-form">
               <div class="form-grid form-grid-4">
                 <label>Naam medewerker<input id="employeeDetailNameInput" /></label>
-                <label>E-mailadres<input id="employeeDetailEmailInput" type="email" placeholder="naam@voorbeeld.nl" /></label>
+                <label>Zakelijk e-mailadres<input id="employeeDetailBusinessEmailInput" type="email" placeholder="naam@werk.nl" /></label>
+                <label>Prive e-mailadres<input id="employeeDetailPrivateEmailInput" type="email" placeholder="naam@prive.nl" /></label>
+                <label class="checkbox-label">
+                  <input id="employeeDetailPlanningEmailIsPrivateInput" type="checkbox" checked />
+                  Gebruik prive e-mail voor planning versturen
+                </label>
                 <label>Contracttype
                   <select id="employeeDetailContractInput">
                     <option value="Vast">Vast contract</option>

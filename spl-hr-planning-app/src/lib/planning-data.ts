@@ -25,6 +25,8 @@ export type WireframeEmployee = {
   id: string;
   name: string;
   email?: string;
+  privateEmail?: string;
+  planningEmailIsPrivate: boolean;
   contractType: string;
   weekHours: number;
   endDate: string;
@@ -43,6 +45,16 @@ export type WireframeAssignment = {
 export function normalizeContractType(contractType?: string | null): string {
   if (contractType === "Inval") return "OproepKracht";
   return contractType || "Vast";
+}
+
+export function getEmployeePlanningEmail(employee: {
+  email?: string | null;
+  privateEmail?: string | null;
+  planningEmailIsPrivate?: boolean | null;
+}): string | undefined {
+  const selected = employee.planningEmailIsPrivate !== false ? employee.privateEmail : employee.email;
+  const trimmed = typeof selected === "string" ? selected.trim() : "";
+  return trimmed || undefined;
 }
 
 function normalizeLocationCapacity(
@@ -236,6 +248,8 @@ export function buildPrototypeMasterData(): {
     id: `emp_${i + 1}`,
     name,
     email: undefined,
+    privateEmail: undefined,
+    planningEmailIsPrivate: true,
     contractType: i % 6 === 0 ? "OproepKracht" : "Vast",
     weekHours: i % 5 === 0 ? 18 : 22.5,
     endDate: "",
@@ -297,6 +311,8 @@ export async function seedPlanningIfEmpty(supabase: SupabaseClient): Promise<boo
       .insert({
         name: emp.name,
         email: emp.email || null,
+        private_email: emp.privateEmail || null,
+        planning_email_is_private: emp.planningEmailIsPrivate,
         contract_type: normalizeContractType(emp.contractType),
         week_hours: emp.weekHours,
         end_date: emp.endDate || null,
@@ -381,6 +397,8 @@ export async function fetchMasterWireframe(supabase: SupabaseClient): Promise<{
     id: row.id,
     name: row.name,
     email: row.email ?? undefined,
+    privateEmail: row.private_email ?? undefined,
+    planningEmailIsPrivate: row.planning_email_is_private !== false,
     contractType: normalizeContractType(row.contract_type),
     weekHours: Number(row.week_hours),
     endDate: row.end_date ?? "",

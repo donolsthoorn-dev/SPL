@@ -15,6 +15,8 @@ function getErrorMessage(error: unknown): string {
 const patchSchema = z.object({
   name: z.string().min(1),
   email: z.email().optional().or(z.literal("")),
+  privateEmail: z.email().optional().or(z.literal("")),
+  planningEmailIsPrivate: z.boolean().optional(),
   contractType: z.string().min(1),
   weekHours: z.number().positive(),
   endDate: z.string(),
@@ -54,11 +56,16 @@ export async function PATCH(
 
   try {
     const contractType = normalizeContractType(parsed.data.contractType);
+    const planningEmailIsPrivate = parsed.data.planningEmailIsPrivate ?? true;
+    const privateEmail = (parsed.data.privateEmail || "").trim();
+    const businessEmail = (parsed.data.email || "").trim();
     const { error: uErr } = await auth.supabase
       .from("spl_employees")
       .update({
         name: parsed.data.name,
-        email: parsed.data.email || null,
+        email: businessEmail || null,
+        private_email: privateEmail || null,
+        planning_email_is_private: planningEmailIsPrivate,
         contract_type: contractType,
         week_hours: parsed.data.weekHours,
         end_date: parsed.data.endDate || null,
@@ -86,11 +93,19 @@ export async function PATCH(
   } catch (e) {
     let message = getErrorMessage(e);
     if (
-      (message.includes("column") && message.includes("email") && message.includes("does not exist")) ||
-      (message.includes("schema cache") && message.includes("'email'") && message.includes("spl_employees"))
+      (message.includes("column") &&
+        (message.includes("email") ||
+          message.includes("private_email") ||
+          message.includes("planning_email_is_private")) &&
+        message.includes("does not exist")) ||
+      (message.includes("schema cache") &&
+        (message.includes("'email'") ||
+          message.includes("'private_email'") ||
+          message.includes("'planning_email_is_private'")) &&
+        message.includes("spl_employees"))
     ) {
       message =
-        "Databasekolom spl_employees.email ontbreekt. Voer in Supabase SQL Editor uit: alter table public.spl_employees add column if not exists email text;";
+        "Databasekolommen voor medewerker e-mail ontbreken. Voer in Supabase SQL Editor uit: supabase-migrate-employee-dual-email.sql";
     }
     return NextResponse.json({ error: message }, { status: 500 });
   }

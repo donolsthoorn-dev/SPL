@@ -68,7 +68,7 @@ async function loadBootstrapFromApi() {
   if (!res.ok) throw new Error((await res.text()) || res.statusText);
   const data = await res.json();
   locations = (data.locations || []).map(normalizeLocationCapacityShape);
-  employees = data.employees || [];
+  employees = (data.employees || []).map(normalizeEmployeeEmailShape);
   return Boolean(data.seededMaster);
 }
 
@@ -316,6 +316,18 @@ function normalizeLocationCapacityShape(location) {
     ...location,
     minEmployees,
     maxEmployees
+  };
+}
+
+function normalizeEmployeeEmailShape(employee) {
+  if (!employee || typeof employee !== "object") return employee;
+  const privateEmail = String(employee.privateEmail || "").trim();
+  const businessEmail = String(employee.email || "").trim();
+  return {
+    ...employee,
+    privateEmail,
+    planningEmailIsPrivate: employee.planningEmailIsPrivate !== false,
+    email: businessEmail
   };
 }
 
@@ -1169,7 +1181,10 @@ function openEmployeeDetail(employeeId) {
   const employee = employees.find((e) => e.id === employeeId);
   document.getElementById("employeeDetailTitle").textContent = `Medewerker detail - ${employee.name}`;
   document.getElementById("employeeDetailNameInput").value = employee.name;
-  document.getElementById("employeeDetailEmailInput").value = employee.email || "";
+  document.getElementById("employeeDetailBusinessEmailInput").value = employee.email || "";
+  document.getElementById("employeeDetailPrivateEmailInput").value = employee.privateEmail || "";
+  document.getElementById("employeeDetailPlanningEmailIsPrivateInput").checked =
+    employee.planningEmailIsPrivate !== false;
   document.getElementById("employeeDetailContractInput").value = employee.contractType;
   document.getElementById("employeeDetailHoursInput").value = employee.weekHours;
   document.getElementById("employeeDetailEndDateInput").value = employee.endDate || "";
@@ -2660,7 +2675,9 @@ document.getElementById("deleteEmployeeBtn").addEventListener("click", async () 
 
 document.getElementById("saveEmployeeDetailBtn").addEventListener("click", async () => {
   const name = document.getElementById("employeeDetailNameInput").value.trim();
-  const email = document.getElementById("employeeDetailEmailInput").value.trim();
+  const businessEmail = document.getElementById("employeeDetailBusinessEmailInput").value.trim();
+  const privateEmail = document.getElementById("employeeDetailPrivateEmailInput").value.trim();
+  const planningEmailIsPrivate = document.getElementById("employeeDetailPlanningEmailIsPrivateInput").checked;
   const contractType = document.getElementById("employeeDetailContractInput").value;
   const weekHours = Number(document.getElementById("employeeDetailHoursInput").value || 0);
   const endDate = document.getElementById("employeeDetailEndDateInput").value || "";
@@ -2687,8 +2704,12 @@ document.getElementById("saveEmployeeDetailBtn").addEventListener("click", async
     document.getElementById("employeeDetailValidation").textContent = "Naam en geldige uren zijn verplicht.";
     return;
   }
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    document.getElementById("employeeDetailValidation").textContent = "Voer een geldig e-mailadres in.";
+  if (businessEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(businessEmail)) {
+    document.getElementById("employeeDetailValidation").textContent = "Voer een geldig zakelijk e-mailadres in.";
+    return;
+  }
+  if (privateEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(privateEmail)) {
+    document.getElementById("employeeDetailValidation").textContent = "Voer een geldig prive e-mailadres in.";
     return;
   }
   if (days.length === 0) {
@@ -2698,7 +2719,9 @@ document.getElementById("saveEmployeeDetailBtn").addEventListener("click", async
   const employee = employees.find((e) => e.id === state.selectedEmployeeId);
   if (!employee) return;
   employee.name = name;
-  employee.email = email;
+  employee.privateEmail = privateEmail;
+  employee.planningEmailIsPrivate = planningEmailIsPrivate;
+  employee.email = businessEmail;
   employee.contractType = contractType;
   employee.weekHours = weekHours;
   employee.endDate = endDate;
@@ -2712,7 +2735,9 @@ document.getElementById("saveEmployeeDetailBtn").addEventListener("click", async
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: employee.name,
-        email: employee.email || "",
+        email: businessEmail || "",
+        privateEmail: employee.privateEmail || "",
+        planningEmailIsPrivate: employee.planningEmailIsPrivate !== false,
         contractType: employee.contractType,
         weekHours: employee.weekHours,
         endDate: employee.endDate || "",
@@ -2838,11 +2863,20 @@ document.getElementById("addLocationBtn").addEventListener("click", async () => 
 document.getElementById("addEmployeeBtn").addEventListener("click", async () => {
   const name = window.prompt("Naam van de nieuwe medewerker:", "Nieuwe medewerker");
   if (name === null) return;
-  const email = window.prompt("E-mailadres (optioneel):", "") || "";
+  const businessEmail = window.prompt("Zakelijk e-mailadres (optioneel):", "") || "";
+  const privateEmail = window.prompt("Prive e-mailadres (optioneel):", "") || "";
+  const usePrivateForPlanning = window.confirm(
+    "Gebruik prive e-mail voor planning versturen?\n\nOK = prive, Annuleren = zakelijk."
+  );
   const n = name.trim() || "Nieuwe medewerker";
-  const e = email.trim();
-  if (e && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
-    window.alert("Ongeldig e-mailadres.");
+  const be = businessEmail.trim();
+  const pe = privateEmail.trim();
+  if (be && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(be)) {
+    window.alert("Ongeldig zakelijk e-mailadres.");
+    return;
+  }
+  if (pe && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(pe)) {
+    window.alert("Ongeldig prive e-mailadres.");
     return;
   }
   const preferredLocationIds = locations.length ? [locations[0].id] : [];
@@ -2851,11 +2885,17 @@ document.getElementById("addEmployeeBtn").addEventListener("click", async () => 
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: n, email: e, preferredLocationIds })
+      body: JSON.stringify({
+        name: n,
+        email: be,
+        privateEmail: pe,
+        planningEmailIsPrivate: usePrivateForPlanning,
+        preferredLocationIds
+      })
     });
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
-    employees.push(data.employee);
+    employees.push(normalizeEmployeeEmailShape(data.employee));
     renderEmployeeList();
     renderPlanningTables();
     document.getElementById("employeeDetailValidation").textContent = "";

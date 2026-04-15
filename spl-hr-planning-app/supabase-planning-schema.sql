@@ -73,6 +73,8 @@ create table if not exists public.spl_employees (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   email text,
+  private_email text,
+  planning_email_is_private boolean not null default true,
   contract_type text not null check (contract_type in ('Vast', 'OproepKracht')),
   week_hours numeric not null,
   end_date date,
@@ -84,6 +86,18 @@ create table if not exists public.spl_employees (
 
 alter table public.spl_employees
   add column if not exists email text;
+
+alter table public.spl_employees
+  add column if not exists private_email text;
+
+alter table public.spl_employees
+  add column if not exists planning_email_is_private boolean not null default true;
+
+alter table public.spl_employees
+  drop column if exists business_email;
+
+alter table public.spl_employees
+  drop column if exists planning_email_is_business;
 
 create table if not exists public.spl_employee_absences (
   id uuid primary key default gen_random_uuid(),

@@ -15,6 +15,8 @@ function getErrorMessage(error: unknown): string {
 const postSchema = z.object({
   name: z.string().min(1).max(200),
   email: z.email().optional().or(z.literal("")),
+  privateEmail: z.email().optional().or(z.literal("")),
+  planningEmailIsPrivate: z.boolean().optional(),
   contractType: z.enum(["Vast", "OproepKracht", "Inval"]).optional(),
   weekHours: z.number().positive().max(60).optional(),
   endDate: z.string().optional(),
@@ -43,6 +45,9 @@ export async function POST(request: NextRequest) {
   const endDate = parsed.data.endDate ?? "";
   const days = parsed.data.days ?? [1, 2, 3, 4, 5];
   const preferredLocationIds = parsed.data.preferredLocationIds ?? [];
+  const planningEmailIsPrivate = parsed.data.planningEmailIsPrivate ?? true;
+  const privateEmail = (parsed.data.privateEmail || "").trim();
+  const businessEmail = (parsed.data.email || "").trim();
 
   try {
     const { data: last } = await auth.supabase
@@ -58,7 +63,9 @@ export async function POST(request: NextRequest) {
       .from("spl_employees")
       .insert({
         name: parsed.data.name,
-        email: parsed.data.email || null,
+        email: businessEmail || null,
+        private_email: privateEmail || null,
+        planning_email_is_private: planningEmailIsPrivate,
         contract_type: contractType,
         week_hours: weekHours,
         end_date: endDate || null,
@@ -73,7 +80,9 @@ export async function POST(request: NextRequest) {
     const employee: WireframeEmployee = {
       id: empRow.id,
       name: parsed.data.name,
-      email: parsed.data.email || undefined,
+      email: businessEmail || undefined,
+      privateEmail: privateEmail || undefined,
+      planningEmailIsPrivate,
       contractType,
       weekHours,
       endDate,
@@ -86,11 +95,19 @@ export async function POST(request: NextRequest) {
   } catch (e) {
     let message = getErrorMessage(e);
     if (
-      (message.includes("column") && message.includes("email") && message.includes("does not exist")) ||
-      (message.includes("schema cache") && message.includes("'email'") && message.includes("spl_employees"))
+      (message.includes("column") &&
+        (message.includes("email") ||
+          message.includes("private_email") ||
+          message.includes("planning_email_is_private")) &&
+        message.includes("does not exist")) ||
+      (message.includes("schema cache") &&
+        (message.includes("'email'") ||
+          message.includes("'private_email'") ||
+          message.includes("'planning_email_is_private'")) &&
+        message.includes("spl_employees"))
     ) {
       message =
-        "Databasekolom spl_employees.email ontbreekt. Voer in Supabase SQL Editor uit: alter table public.spl_employees add column if not exists email text;";
+        "Databasekolommen voor medewerker e-mail ontbreken. Voer in Supabase SQL Editor uit: supabase-migrate-employee-dual-email.sql";
     }
     return NextResponse.json({ error: message }, { status: 500 });
   }

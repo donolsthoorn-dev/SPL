@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { fetchWeekState } from "@/lib/planning-data";
+import { fetchWeekState, getEmployeePlanningEmail } from "@/lib/planning-data";
 import { getIsoWeekNumber } from "@/lib/publieke-planning-renderer";
 import { requirePlanningApiUser } from "@/lib/planning-api-auth";
 import { sendPlanningPublishEmails } from "@/lib/planning-email";
@@ -26,6 +26,12 @@ function mapEmailSendError(error: unknown): string {
   if (raw.includes("PUBLIC_LINK_SIGNING_SECRET")) {
     return "PUBLIC_LINK_SIGNING_SECRET ontbreekt. Voeg deze toe aan .env.local en herstart de app.";
   }
+  if (
+    raw.includes("spl_employees") &&
+    (raw.includes("private_email") || raw.includes("planning_email_is_private"))
+  ) {
+    return "Databasekolommen voor medewerker e-mail ontbreken. Voer in Supabase SQL Editor uit: supabase-migrate-employee-dual-email.sql";
+  }
   return raw;
 }
 
@@ -36,11 +42,21 @@ function parseWeekStart(request: NextRequest): string | null {
 }
 
 async function getRecipients(supabase: SupabaseClient) {
-  const { data, error } = await supabase.from("spl_employees").select("id, name, email");
+  const { data, error } = await supabase
+    .from("spl_employees")
+    .select("id, name, email, private_email, planning_email_is_private");
   if (error) throw error;
   return (data ?? [])
-    .filter((r) => typeof r.email === "string" && r.email.trim().length > 0)
-    .map((r) => ({ id: r.id, name: r.name, email: (r.email as string).trim() }));
+    .map((r) => {
+      const selectedEmail =
+        getEmployeePlanningEmail({
+          email: r.email,
+          privateEmail: r.private_email,
+          planningEmailIsPrivate: r.planning_email_is_private,
+        }) ?? (typeof r.email === "string" ? r.email.trim() : "");
+      return { id: r.id, name: r.name, email: selectedEmail };
+    })
+    .filter((r) => r.email.length > 0);
 }
 
 export async function GET(request: NextRequest) {
