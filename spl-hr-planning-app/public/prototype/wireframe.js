@@ -1,5 +1,7 @@
 const weekdays = ["Ma", "Di", "Wo", "Do", "Vr"];
 const dayParts = ["ochtend", "middag"];
+const DEFAULT_MIN_EMPLOYEES = 2;
+const DEFAULT_MAX_EMPLOYEES = 4;
 
 // Stamdata uit Postgres via Next API (eerste keer automatisch gevuld met prototype-set)
 let locations = [];
@@ -65,7 +67,7 @@ async function loadBootstrapFromApi() {
   const res = await fetch("/api/planning/bootstrap", { credentials: "include" });
   if (!res.ok) throw new Error((await res.text()) || res.statusText);
   const data = await res.json();
-  locations = data.locations || [];
+  locations = (data.locations || []).map(normalizeLocationCapacityShape);
   employees = data.employees || [];
   return Boolean(data.seededMaster);
 }
@@ -301,6 +303,36 @@ function seedAssignments() {
 
 function getLocationName(id) {
   return locations.find((l) => l.id === id)?.name || "-";
+}
+
+function normalizeLocationCapacityShape(location) {
+  if (!location || typeof location !== "object") return location;
+  const minParsed = Number(location.minEmployees);
+  const minEmployees = Number.isFinite(minParsed) ? Math.max(1, Math.trunc(minParsed)) : DEFAULT_MIN_EMPLOYEES;
+  const maxParsed = Number(location.maxEmployees);
+  const maxFromInput = Number.isFinite(maxParsed) ? Math.max(1, Math.trunc(maxParsed)) : DEFAULT_MAX_EMPLOYEES;
+  const maxEmployees = Math.max(maxFromInput, minEmployees);
+  return {
+    ...location,
+    minEmployees,
+    maxEmployees
+  };
+}
+
+function getLocationCapacity(locationId) {
+  const location = locations.find((l) => l.id === locationId);
+  if (!location) {
+    return {
+      minEmployees: DEFAULT_MIN_EMPLOYEES,
+      maxEmployees: DEFAULT_MAX_EMPLOYEES
+    };
+  }
+  const normalized = normalizeLocationCapacityShape(location);
+  if (normalized !== location) Object.assign(location, normalized);
+  return {
+    minEmployees: location.minEmployees,
+    maxEmployees: location.maxEmployees
+  };
 }
 
 function getEmployeeName(id) {
@@ -993,6 +1025,11 @@ function openLocationDetail(locationId) {
   document.getElementById("locationDetailPlaceInput").value = location.place;
   const emailInput = document.getElementById("locationDetailEmailInput");
   if (emailInput) emailInput.value = location.email || "";
+  const capacity = getLocationCapacity(locationId);
+  const minInput = document.getElementById("locationDetailMinEmployeesInput");
+  const maxInput = document.getElementById("locationDetailMaxEmployeesInput");
+  if (minInput) minInput.value = String(capacity.minEmployees);
+  if (maxInput) maxInput.value = String(capacity.maxEmployees);
   renderLocationPeriods(location);
   const locLinkInput = document.getElementById("locationPlanningLinkInput");
   if (locLinkInput) locLinkInput.value = "Locatie link laden...";
@@ -1322,6 +1359,7 @@ function renderPlanningTables() {
           return;
         }
         const ass = assignmentIndex.getCell(loc.id, weekday, dayPart);
+        const capacity = getLocationCapacity(loc.id);
         const hasDoubleBookingConflict = ass.some((a) =>
           hasDuplicateTimeslotAssignment(a.employeeId, weekday, dayPart, loc.id)
         );
@@ -1351,10 +1389,10 @@ function renderPlanningTables() {
                </div>`;
           })
           .join("");
-        const hasCapacityConflict = ass.length < 2 || ass.length > 4;
+        const hasCapacityConflict = ass.length < capacity.minEmployees || ass.length > capacity.maxEmployees;
         const cls = hasCapacityConflict ? "danger" : hasDoubleBookingConflict ? "warn" : "ok";
-        const isUnderstaffed = ass.length < 2;
-        const isOverstaffed = ass.length > 4;
+        const isUnderstaffed = ass.length < capacity.minEmployees;
+        const isOverstaffed = ass.length > capacity.maxEmployees;
         const isConflict = isUnderstaffed || isOverstaffed || hasDoubleBookingConflict;
         locationHtml += `<td class="planning-cell ${cls}" data-location="${loc.id}" data-weekday="${weekday}" data-daypart="${dayPart}" data-understaffed="${isUnderstaffed}" data-overstaffed="${isOverstaffed}" data-conflict="${isConflict}">${names}</td>`;
       });
@@ -1627,8 +1665,9 @@ function getLocationOptionCandidates(selectedEmployeeCell) {
       const key = `${loc.id}-${dayPart}`;
       if (plannedKeys.has(key)) return;
       const ass = getAssignmentsForCell(loc.id, weekday, dayPart);
+      const capacity = getLocationCapacity(loc.id);
       const isTimeslotConflict = isEmployeeAlreadyPlannedAtTimeslot(employeeId, weekday, dayPart, loc.id);
-      const isFull = ass.length >= 4;
+      const isFull = ass.length >= capacity.maxEmployees;
       options.push({
         key,
         locationId: loc.id,
@@ -1638,7 +1677,7 @@ function getLocationOptionCandidates(selectedEmployeeCell) {
         reason: isTimeslotConflict
           ? "Dubbel dagdeel voor medewerker"
           : isFull
-            ? "Locatie al vol (4)"
+            ? `Locatie al vol (${capacity.maxEmployees})`
             : ""
       });
     });
@@ -1957,6 +1996,7 @@ function renderConflictsAndSuggestions() {
   plannedEmployeeListEl.innerHTML = "";
   if (!state.selectedCell) return;
   const ass = getAssignmentsForCell(state.selectedCell.locationId, state.selectedCell.weekday, state.selectedCell.dayPart);
+  const capacity = getLocationCapacity(state.selectedCell.locationId);
   const plannedIds = new Set(ass.map((a) => a.employeeId));
 
   ass.forEach((a) => {
@@ -1974,8 +2014,12 @@ function renderConflictsAndSuggestions() {
     plannedEmployeeListEl.appendChild(msg);
   }
   const conflictMessages = [];
-  if (ass.length < 2) conflictMessages.push("Onderbezetting: minder dan 2 medewerkers.");
-  if (ass.length > 4) conflictMessages.push("Overbezetting: meer dan 4 medewerkers.");
+  if (ass.length < capacity.minEmployees) {
+    conflictMessages.push(`Onderbezetting: minimaal ${capacity.minEmployees} medewerkers vereist.`);
+  }
+  if (ass.length > capacity.maxEmployees) {
+    conflictMessages.push(`Overbezetting: maximaal ${capacity.maxEmployees} medewerkers toegestaan.`);
+  }
   ass.forEach((a) => {
     const otherLocationIds = getOtherTimeslotLocations(
       a.employeeId,
@@ -2525,8 +2569,22 @@ document.getElementById("saveLocationDetailBtn").addEventListener("click", async
   const name = document.getElementById("locationDetailNameInput").value.trim();
   const place = document.getElementById("locationDetailPlaceInput").value.trim();
   const emailRaw = (document.getElementById("locationDetailEmailInput")?.value || "").trim();
+  const minEmployees = Number(document.getElementById("locationDetailMinEmployeesInput")?.value || 0);
+  const maxEmployees = Number(document.getElementById("locationDetailMaxEmployeesInput")?.value || 0);
   if (!name || !place) {
     document.getElementById("locationDetailValidation").textContent = "Naam en plaats zijn verplicht.";
+    return;
+  }
+  if (!Number.isFinite(minEmployees) || minEmployees < 1 || !Number.isInteger(minEmployees)) {
+    document.getElementById("locationDetailValidation").textContent = "Minimale bezetting moet een geheel getal vanaf 1 zijn.";
+    return;
+  }
+  if (!Number.isFinite(maxEmployees) || maxEmployees < 1 || !Number.isInteger(maxEmployees)) {
+    document.getElementById("locationDetailValidation").textContent = "Maximale bezetting moet een geheel getal vanaf 1 zijn.";
+    return;
+  }
+  if (maxEmployees < minEmployees) {
+    document.getElementById("locationDetailValidation").textContent = "Maximale bezetting moet groter of gelijk zijn aan minimale bezetting.";
     return;
   }
   if (emailRaw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)) {
@@ -2538,6 +2596,8 @@ document.getElementById("saveLocationDetailBtn").addEventListener("click", async
   location.name = name;
   location.place = place;
   location.email = emailRaw || undefined;
+  location.minEmployees = minEmployees;
+  location.maxEmployees = maxEmployees;
   readLocationPeriodsFromDetailForm(location);
   try {
     const res = await fetch(`/api/planning/location/${state.selectedLocationId}`, {
@@ -2548,6 +2608,8 @@ document.getElementById("saveLocationDetailBtn").addEventListener("click", async
         name: location.name,
         place: location.place,
         email: emailRaw || null,
+        minEmployees: location.minEmployees,
+        maxEmployees: location.maxEmployees,
         periods: location.periods
       })
     });
@@ -2753,11 +2815,16 @@ document.getElementById("addLocationBtn").addEventListener("click", async () => 
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: n, place: p })
+      body: JSON.stringify({
+        name: n,
+        place: p,
+        minEmployees: DEFAULT_MIN_EMPLOYEES,
+        maxEmployees: DEFAULT_MAX_EMPLOYEES
+      })
     });
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
-    locations.push(data.location);
+    locations.push(normalizeLocationCapacityShape(data.location));
     renderLocationList();
     renderLocationFilterOptions();
     renderPlanningTables();

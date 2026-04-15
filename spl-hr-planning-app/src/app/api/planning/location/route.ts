@@ -8,6 +8,8 @@ const postSchema = z.object({
   name: z.string().min(1).max(200),
   place: z.string().min(1).max(120),
   email: z.string().max(320).optional(),
+  minEmployees: z.number().int().min(1).optional(),
+  maxEmployees: z.number().int().min(1).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -33,6 +35,12 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const minEmployees = parsed.data.minEmployees ?? 2;
+    const maxEmployees = parsed.data.maxEmployees ?? 4;
+    if (maxEmployees < minEmployees) {
+      return NextResponse.json({ error: "Maximum bezetting moet groter of gelijk zijn aan minimum bezetting." }, { status: 400 });
+    }
+
     const { data: last } = await auth.supabase
       .from("spl_locations")
       .select("sort_order")
@@ -48,6 +56,8 @@ export async function POST(request: NextRequest) {
         name: parsed.data.name,
         place: parsed.data.place,
         email,
+        min_employees: minEmployees,
+        max_employees: maxEmployees,
         sort_order: sortOrder,
       })
       .select("id")
@@ -68,6 +78,8 @@ export async function POST(request: NextRequest) {
       id: locRow.id,
       name: parsed.data.name,
       place: parsed.data.place,
+      minEmployees,
+      maxEmployees,
       ...(email ? { email } : {}),
       periods: [period],
     };

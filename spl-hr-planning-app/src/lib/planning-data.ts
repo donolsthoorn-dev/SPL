@@ -16,6 +16,8 @@ export type WireframeLocation = {
   name: string;
   place: string;
   email?: string;
+  minEmployees: number;
+  maxEmployees: number;
   periods: WireframePeriod[];
 };
 
@@ -41,6 +43,16 @@ export type WireframeAssignment = {
 export function normalizeContractType(contractType?: string | null): string {
   if (contractType === "Inval") return "OproepKracht";
   return contractType || "Vast";
+}
+
+function normalizeLocationCapacity(
+  minEmployees: number | null | undefined,
+  maxEmployees: number | null | undefined,
+): { minEmployees: number; maxEmployees: number } {
+  const min = Number.isFinite(Number(minEmployees)) ? Math.max(1, Math.trunc(Number(minEmployees))) : 2;
+  const maxRaw = Number.isFinite(Number(maxEmployees)) ? Math.max(1, Math.trunc(Number(maxEmployees))) : 4;
+  const max = Math.max(maxRaw, min);
+  return { minEmployees: min, maxEmployees: max };
 }
 
 /** Zelfde stamdata als het oorspronkelijke prototype (wireframe.js). */
@@ -187,6 +199,8 @@ export function buildPrototypeMasterData(): {
     id: `loc_${i + 1}`,
     name,
     place: name.includes("Noordwijk") ? "Leiden" : "Leiden",
+    minEmployees: 2,
+    maxEmployees: 4,
     periods: [
       {
         start: "2026-04-01",
@@ -250,6 +264,8 @@ export async function seedPlanningIfEmpty(supabase: SupabaseClient): Promise<boo
       .insert({
         name: loc.name,
         place: loc.place,
+        min_employees: loc.minEmployees,
+        max_employees: loc.maxEmployees,
         sort_order: i,
       })
       .select("id")
@@ -344,17 +360,22 @@ export async function fetchMasterWireframe(supabase: SupabaseClient): Promise<{
     absByEmp.set(a.employee_id, list);
   }
 
-  const locations: WireframeLocation[] = (locs || []).map((row) => ({
-    id: row.id,
-    name: row.name,
-    place: row.place,
-    email: row.email ?? undefined,
-    periods: (periodsByLoc.get(row.id) || []).map((per) => ({
-      start: per.start_date,
-      end: per.end_date,
-      slots: per.slots as WireframePeriod["slots"],
-    })),
-  }));
+  const locations: WireframeLocation[] = (locs || []).map((row) => {
+    const capacity = normalizeLocationCapacity(row.min_employees, row.max_employees);
+    return {
+      id: row.id,
+      name: row.name,
+      place: row.place,
+      email: row.email ?? undefined,
+      minEmployees: capacity.minEmployees,
+      maxEmployees: capacity.maxEmployees,
+      periods: (periodsByLoc.get(row.id) || []).map((per) => ({
+        start: per.start_date,
+        end: per.end_date,
+        slots: per.slots as WireframePeriod["slots"],
+      })),
+    };
+  });
 
   const employees: WireframeEmployee[] = (emps || []).map((row) => ({
     id: row.id,

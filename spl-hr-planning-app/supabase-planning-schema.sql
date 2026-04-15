@@ -24,9 +24,41 @@ create table if not exists public.spl_locations (
   name text not null,
   place text not null,
   email text,
+  min_employees int not null default 2,
+  max_employees int not null default 4,
   sort_order int not null default 0,
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  constraint spl_locations_min_employees_check check (min_employees >= 1),
+  constraint spl_locations_max_employees_check check (max_employees >= min_employees)
 );
+
+alter table public.spl_locations
+  add column if not exists min_employees int not null default 2;
+
+alter table public.spl_locations
+  add column if not exists max_employees int not null default 4;
+
+update public.spl_locations
+set min_employees = 2
+where min_employees is null or min_employees < 1;
+
+update public.spl_locations
+set max_employees = greatest(coalesce(max_employees, 4), min_employees)
+where max_employees is null or max_employees < min_employees;
+
+alter table public.spl_locations
+  drop constraint if exists spl_locations_min_employees_check;
+
+alter table public.spl_locations
+  add constraint spl_locations_min_employees_check
+  check (min_employees >= 1);
+
+alter table public.spl_locations
+  drop constraint if exists spl_locations_max_employees_check;
+
+alter table public.spl_locations
+  add constraint spl_locations_max_employees_check
+  check (max_employees >= min_employees);
 
 create table if not exists public.spl_location_periods (
   id uuid primary key default gen_random_uuid(),

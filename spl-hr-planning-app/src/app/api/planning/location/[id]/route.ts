@@ -19,6 +19,8 @@ const patchSchema = z.object({
   name: z.string().min(1),
   place: z.string().min(1),
   email: z.string().max(320).optional().nullable(),
+  minEmployees: z.number().int().min(1),
+  maxEmployees: z.number().int().min(1),
   periods: z.array(periodSchema).min(1),
 });
 
@@ -53,6 +55,12 @@ export async function PATCH(
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json({ error: "Ongeldig e-mailadres" }, { status: 400 });
   }
+  if (parsed.data.maxEmployees < parsed.data.minEmployees) {
+    return NextResponse.json(
+      { error: "Maximum bezetting moet groter of gelijk zijn aan minimum bezetting." },
+      { status: 400 },
+    );
+  }
 
   try {
     const { error: uErr } = await auth.supabase
@@ -61,6 +69,8 @@ export async function PATCH(
         name: parsed.data.name,
         place: parsed.data.place,
         email,
+        min_employees: parsed.data.minEmployees,
+        max_employees: parsed.data.maxEmployees,
         updated_at: new Date().toISOString(),
       })
       .eq("id", id);

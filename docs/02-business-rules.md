@@ -6,7 +6,7 @@ Dit document legt de definitieve harde en zachte regels vast voor planning, cont
 
 - Dagdelen: `ochtend`, `middag`.
 - Werkweek: maandag tot en met vrijdag.
-- Doelbezetting per open dagdeel per locatie: minimaal 3, maximaal 4 medewerkers.
+- Doelbezetting per open dagdeel wordt per locatie vastgelegd: `min_employees` en `max_employees` (standaard 2-4).
 - Contracttypen: `vast`, `oproepkracht`.
 
 ## 2. Harde regels (must-pass)
@@ -53,9 +53,9 @@ De ranking wordt bepaald in deze volgorde:
 ## 5. Signaleringsregels in UI
 
 ## Locatieplanning
-- **Rood:** bezetting < 3 of > 4.
+- **Rood:** bezetting < locatie-minimum of > locatie-maximum.
 - **Oranje:** bezetting ok, maar minimaal 1 conflictwaarschuwing aanwezig.
-- **Groen:** bezetting 3-4 zonder conflict.
+- **Groen:** bezetting binnen locatie-minimum/-maximum zonder conflict.
 
 ## Medewerkerplanning
 - **Rood:** over daglimiet/over weeklimiet/dubbele inzet.
