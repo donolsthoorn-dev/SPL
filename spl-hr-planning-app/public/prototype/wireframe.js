@@ -249,15 +249,16 @@ function seedAssignments() {
     );
     for (const employee of pool) {
       const currentHours = assignedHours.get(employee.id) || 0;
+      const slotHours = getScheduledHoursForAssignment(locationId, weekday, dayPart, state.weekStart);
       if (!employee.days.includes(weekday)) continue;
       const dayIso = getIsoDateForWeekday(weekday);
       const isAbsent = (employee.absences || []).some((a) => a.date === dayIso);
       if (isAbsent) continue;
-      if (currentHours + 4.5 > employee.weekHours + 4.5) continue;
+      if (currentHours + slotHours > employee.weekHours + slotHours) continue;
       if (usedInTimeslot.has(employee.id)) continue;
       if (alreadyInCell.has(employee.id)) continue;
       state.assignments.push({ locationId, weekday, dayPart, employeeId: employee.id });
-      assignedHours.set(employee.id, currentHours + 4.5);
+      assignedHours.set(employee.id, currentHours + slotHours);
       usedInTimeslot.add(employee.id);
       return true;
     }
@@ -358,7 +359,7 @@ function getAssignmentsForCell(locationId, weekday, dayPart) {
 function buildAssignmentIndexes(assignments) {
   const byCell = new Map();
   const byEmployeeWeekday = new Map();
-  const countByEmployee = new Map();
+  const hoursByEmployee = new Map();
 
   assignments.forEach((a) => {
     const cellKey = `${a.locationId}|${a.weekday}|${a.dayPart}`;
@@ -367,7 +368,8 @@ function buildAssignmentIndexes(assignments) {
     if (!byEmployeeWeekday.has(empDayKey)) byEmployeeWeekday.set(empDayKey, []);
     byCell.get(cellKey).push(a);
     byEmployeeWeekday.get(empDayKey).push(a);
-    countByEmployee.set(a.employeeId, (countByEmployee.get(a.employeeId) || 0) + 1);
+    const assignmentHours = getScheduledHoursForAssignment(a.locationId, a.weekday, a.dayPart, state.weekStart);
+    hoursByEmployee.set(a.employeeId, (hoursByEmployee.get(a.employeeId) || 0) + assignmentHours);
   });
 
   return {
@@ -378,7 +380,7 @@ function buildAssignmentIndexes(assignments) {
       return byEmployeeWeekday.get(`${employeeId}|${weekday}`) || [];
     },
     getEmployeeHours(employeeId) {
-      return (countByEmployee.get(employeeId) || 0) * 4.5;
+      return Math.round((hoursByEmployee.get(employeeId) || 0) * 100) / 100;
     }
   };
 }
@@ -436,8 +438,34 @@ function canAssignEmployeeToCell(employeeId, locationId, weekday, dayPart, ignor
   return !isEmployeeAlreadyPlannedAtTimeslot(employeeId, weekday, dayPart, ignoreLocationId);
 }
 
+function getScheduledHoursForAssignment(locationId, weekday, dayPart, weekStart) {
+  const location = locations.find((l) => l.id === locationId);
+  if (!location) return 0;
+  const dayMap = { 1: "ma", 2: "di", 3: "wo", 4: "do", 5: "vr" };
+  const dayKey = dayMap[weekday];
+  const targetDate = addDaysToIsoDate(weekStart, weekday - 1);
+  const period = location.periods.find(
+    (p) => targetDate >= p.start && targetDate <= p.end
+  );
+  if (!period) return 0;
+  return Number(period.slots?.[dayKey]?.[dayPart] || 0);
+}
+
 function getEmployeePlannedHours(employeeId) {
-  return state.assignments.filter((a) => a.employeeId === employeeId).length * 4.5;
+  const hours = state.assignments
+    .filter((a) => a.employeeId === employeeId)
+    .reduce(
+      (total, assignment) =>
+        total +
+        getScheduledHoursForAssignment(
+          assignment.locationId,
+          assignment.weekday,
+          assignment.dayPart,
+          state.weekStart
+        ),
+      0
+    );
+  return Math.round(hours * 100) / 100;
 }
 
 function hasEmployeeTimeslotConflict(employeeId) {
@@ -1154,19 +1182,19 @@ function renderLocationPeriods(location) {
         <tbody>
           <tr>
             <th>Ochtend</th>
-            <td><input type="number" step="0.5" min="0" placeholder="Ochtend" data-period-slot="${index}" data-day="ma" data-daypart="ochtend" value="${period.slots.ma.ochtend}" /></td>
-            <td><input type="number" step="0.5" min="0" placeholder="Ochtend" data-period-slot="${index}" data-day="di" data-daypart="ochtend" value="${period.slots.di.ochtend}" /></td>
-            <td><input type="number" step="0.5" min="0" placeholder="Ochtend" data-period-slot="${index}" data-day="wo" data-daypart="ochtend" value="${period.slots.wo.ochtend}" /></td>
-            <td><input type="number" step="0.5" min="0" placeholder="Ochtend" data-period-slot="${index}" data-day="do" data-daypart="ochtend" value="${period.slots.do.ochtend}" /></td>
-            <td><input type="number" step="0.5" min="0" placeholder="Ochtend" data-period-slot="${index}" data-day="vr" data-daypart="ochtend" value="${period.slots.vr.ochtend}" /></td>
+            <td><input type="number" step="0.25" min="0" placeholder="Ochtend" data-period-slot="${index}" data-day="ma" data-daypart="ochtend" value="${period.slots.ma.ochtend}" /></td>
+            <td><input type="number" step="0.25" min="0" placeholder="Ochtend" data-period-slot="${index}" data-day="di" data-daypart="ochtend" value="${period.slots.di.ochtend}" /></td>
+            <td><input type="number" step="0.25" min="0" placeholder="Ochtend" data-period-slot="${index}" data-day="wo" data-daypart="ochtend" value="${period.slots.wo.ochtend}" /></td>
+            <td><input type="number" step="0.25" min="0" placeholder="Ochtend" data-period-slot="${index}" data-day="do" data-daypart="ochtend" value="${period.slots.do.ochtend}" /></td>
+            <td><input type="number" step="0.25" min="0" placeholder="Ochtend" data-period-slot="${index}" data-day="vr" data-daypart="ochtend" value="${period.slots.vr.ochtend}" /></td>
           </tr>
           <tr>
             <th>Middag</th>
-            <td><input type="number" step="0.5" min="0" placeholder="Middag" data-period-slot="${index}" data-day="ma" data-daypart="middag" value="${period.slots.ma.middag}" /></td>
-            <td><input type="number" step="0.5" min="0" placeholder="Middag" data-period-slot="${index}" data-day="di" data-daypart="middag" value="${period.slots.di.middag}" /></td>
-            <td><input type="number" step="0.5" min="0" placeholder="Middag" data-period-slot="${index}" data-day="wo" data-daypart="middag" value="${period.slots.wo.middag}" /></td>
-            <td><input type="number" step="0.5" min="0" placeholder="Middag" data-period-slot="${index}" data-day="do" data-daypart="middag" value="${period.slots.do.middag}" /></td>
-            <td><input type="number" step="0.5" min="0" placeholder="Middag" data-period-slot="${index}" data-day="vr" data-daypart="middag" value="${period.slots.vr.middag}" /></td>
+            <td><input type="number" step="0.25" min="0" placeholder="Middag" data-period-slot="${index}" data-day="ma" data-daypart="middag" value="${period.slots.ma.middag}" /></td>
+            <td><input type="number" step="0.25" min="0" placeholder="Middag" data-period-slot="${index}" data-day="di" data-daypart="middag" value="${period.slots.di.middag}" /></td>
+            <td><input type="number" step="0.25" min="0" placeholder="Middag" data-period-slot="${index}" data-day="wo" data-daypart="middag" value="${period.slots.wo.middag}" /></td>
+            <td><input type="number" step="0.25" min="0" placeholder="Middag" data-period-slot="${index}" data-day="do" data-daypart="middag" value="${period.slots.do.middag}" /></td>
+            <td><input type="number" step="0.25" min="0" placeholder="Middag" data-period-slot="${index}" data-day="vr" data-daypart="middag" value="${period.slots.vr.middag}" /></td>
           </tr>
         </tbody>
       </table>
@@ -1785,7 +1813,7 @@ function buildPublicEmployeeExportMatrix() {
         row.push(dayAssignments.map((a) => `${getLocationName(a.locationId)} (${a.dayPart})`).join("; "));
       }
     }
-    const total = state.assignments.filter((a) => a.employeeId === emp.id).length * 4.5;
+    const total = getEmployeePlannedHours(emp.id);
     row.push(`${total} / ${emp.weekHours}`);
     rows.push(row);
   });
