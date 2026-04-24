@@ -252,7 +252,7 @@ function seedAssignments() {
       const slotHours = getScheduledHoursForAssignment(locationId, weekday, dayPart, state.weekStart);
       if (!employee.days.includes(weekday)) continue;
       const dayIso = getIsoDateForWeekday(weekday);
-      const isAbsent = (employee.absences || []).some((a) => a.date === dayIso);
+      const isAbsent = (employee.absences || []).some((a) => isAbsenceOnDay(a, dayIso));
       if (isAbsent) continue;
       if (currentHours + slotHours > employee.weekHours + slotHours) continue;
       if (usedInTimeslot.has(employee.id)) continue;
@@ -356,6 +356,28 @@ function getAssignmentsForCell(locationId, weekday, dayPart) {
   return state.assignments.filter((a) => a.locationId === locationId && a.weekday === weekday && a.dayPart === dayPart);
 }
 
+function normalizeAbsenceRange(absence) {
+  const startDate = String(absence?.startDate || absence?.date || "").trim();
+  const endDateRaw = String(absence?.endDate || "").trim();
+  const endDate = endDateRaw || startDate;
+  if (!startDate || !endDate) return null;
+  return startDate <= endDate
+    ? { startDate, endDate, reason: String(absence?.reason || "Ziek") }
+    : { startDate: endDate, endDate: startDate, reason: String(absence?.reason || "Ziek") };
+}
+
+function isAbsenceOnDay(absence, dayIso) {
+  const normalized = normalizeAbsenceRange(absence);
+  if (!normalized) return false;
+  return dayIso >= normalized.startDate && dayIso <= normalized.endDate;
+}
+
+function doesAbsenceOverlapRange(absence, rangeStart, rangeEnd) {
+  const normalized = normalizeAbsenceRange(absence);
+  if (!normalized) return false;
+  return normalized.startDate <= rangeEnd && normalized.endDate >= rangeStart;
+}
+
 function buildAssignmentIndexes(assignments) {
   const byCell = new Map();
   const byEmployeeWeekday = new Map();
@@ -387,7 +409,7 @@ function buildAssignmentIndexes(assignments) {
 
 function isEmployeeAbsentInCurrentWeek(employee) {
   const weekEnd = addDaysToIsoDate(state.weekStart, 4);
-  return (employee.absences || []).some((a) => a.date >= state.weekStart && a.date <= weekEnd);
+  return (employee.absences || []).some((a) => doesAbsenceOverlapRange(a, state.weekStart, weekEnd));
 }
 
 function getUniqueFixedEmployeesForLocationWeekIds(locationId) {
@@ -520,7 +542,7 @@ function getIsoDateForWeekday(weekday) {
 function isEmployeeAvailableForWeekday(employee, weekday) {
   if (!employee.days.includes(weekday)) return false;
   const dayIso = getIsoDateForWeekday(weekday);
-  const isAbsent = (employee.absences || []).some((a) => a.date === dayIso);
+  const isAbsent = (employee.absences || []).some((a) => isAbsenceOnDay(a, dayIso));
   if (isAbsent) return false;
   return locations.some((loc) => dayParts.some((dayPart) => isOpenFromPeriods(loc.id, weekday, dayPart, state.weekStart)));
 }
@@ -528,12 +550,12 @@ function isEmployeeAvailableForWeekday(employee, weekday) {
 function isEmployeePlanableForWeekday(employee, weekday) {
   if (!employee.days.includes(weekday)) return false;
   const dayIso = getIsoDateForWeekday(weekday);
-  return !(employee.absences || []).some((a) => a.date === dayIso);
+  return !(employee.absences || []).some((a) => isAbsenceOnDay(a, dayIso));
 }
 
 function getEmployeeAbsenceForWeekday(employee, weekday) {
   const dayIso = getIsoDateForWeekday(weekday);
-  return (employee.absences || []).find((a) => a.date === dayIso) || null;
+  return (employee.absences || []).find((a) => isAbsenceOnDay(a, dayIso)) || null;
 }
 
 function isEmployeeSickForWeekday(employee, weekday) {
@@ -1325,8 +1347,28 @@ function moveOptionByDoubleClick(fromEl, toEl, event) {
   }
 }
 
+function getAbsenceRowStartDateValue(tr) {
+  if (tr.dataset.rowType === "saved") return String(tr.dataset.startDate || "").trim();
+  return String(tr.querySelector(".absence-start-date")?.value || "").trim();
+}
+
+function sortEmployeeAbsenceRowsByStartDate() {
+  if (!employeeAbsenceTableBodyEl) return;
+  const rows = Array.from(employeeAbsenceTableBodyEl.querySelectorAll("tr"));
+  rows.sort((a, b) => {
+    const aDate = getAbsenceRowStartDateValue(a);
+    const bDate = getAbsenceRowStartDateValue(b);
+    if (!aDate && !bDate) return 0;
+    if (!aDate) return 1;
+    if (!bDate) return -1;
+    return aDate.localeCompare(bDate);
+  });
+  rows.forEach((tr) => employeeAbsenceTableBodyEl.appendChild(tr));
+}
+
 function syncAbsenceRemoveButtonsVisibility() {
   if (!employeeAbsenceTableBodyEl) return;
+  sortEmployeeAbsenceRowsByStartDate();
   const rows = Array.from(employeeAbsenceTableBodyEl.querySelectorAll("tr"));
   rows.forEach((tr) => {
     const btn = tr.querySelector(".remove-absence-btn");
@@ -1337,10 +1379,13 @@ function syncAbsenceRemoveButtonsVisibility() {
       return;
     }
     if (rows.length === 1) {
-      const dateInput = tr.querySelector(".absence-date");
-      const hasDate = Boolean(dateInput && String(dateInput.value || "").trim());
-      btn.hidden = !hasDate;
-      btn.title = hasDate ? "Deze regel verwijderen" : "";
+      const startDateInput = tr.querySelector(".absence-start-date");
+      const endDateInput = tr.querySelector(".absence-end-date");
+      const hasStartDate = Boolean(startDateInput && String(startDateInput.value || "").trim());
+      const hasEndDate = Boolean(endDateInput && String(endDateInput.value || "").trim());
+      const hasAnyDate = hasStartDate || hasEndDate;
+      btn.hidden = !hasAnyDate;
+      btn.title = hasAnyDate ? "Deze regel verwijderen" : "";
     } else {
       btn.hidden = false;
       btn.title = "Deze regel verwijderen";
@@ -1351,7 +1396,7 @@ function syncAbsenceRemoveButtonsVisibility() {
 function ensureEmployeeAbsenceHasEditableRow() {
   if (!employeeAbsenceTableBodyEl) return;
   if (employeeAbsenceTableBodyEl.querySelectorAll("tr").length === 0) {
-    addEmployeeAbsenceDraftRow("", "Ziek");
+    addEmployeeAbsenceDraftRow("", "", "Ziek");
   }
 }
 
@@ -1361,38 +1406,61 @@ function removeEmployeeAbsenceRow(tr) {
   syncAbsenceRemoveButtonsVisibility();
 }
 
+function editEmployeeAbsenceSavedRow(tr) {
+  const normalized = normalizeAbsenceRange({
+    startDate: tr.dataset.startDate || "",
+    endDate: tr.dataset.endDate || "",
+    reason: tr.dataset.reason || "Ziek"
+  });
+  if (!normalized) return;
+  tr.remove();
+  addEmployeeAbsenceDraftRow(normalized.startDate, normalized.endDate, normalized.reason);
+  syncAbsenceRemoveButtonsVisibility();
+}
+
 function renderEmployeeAbsenceRows(employee) {
   if (!employeeAbsenceTableBodyEl) return;
   employeeAbsenceTableBodyEl.innerHTML = "";
   if (!employee.absences || employee.absences.length === 0) {
-    addEmployeeAbsenceDraftRow("", "Ziek");
+    addEmployeeAbsenceDraftRow("", "", "Ziek");
     syncAbsenceRemoveButtonsVisibility();
     return;
   }
-  employee.absences.forEach((absence) => addEmployeeAbsenceSavedRow(absence.date, absence.reason));
+  employee.absences.forEach((absence) => {
+    const normalized = normalizeAbsenceRange(absence);
+    if (!normalized) return;
+    addEmployeeAbsenceSavedRow(normalized.startDate, normalized.endDate, normalized.reason);
+  });
   syncAbsenceRemoveButtonsVisibility();
 }
 
-function addEmployeeAbsenceSavedRow(dateValue, reasonValue) {
+function addEmployeeAbsenceSavedRow(startDateValue, endDateValue, reasonValue) {
   const tr = document.createElement("tr");
   tr.dataset.rowType = "saved";
-  tr.dataset.date = dateValue;
+  tr.dataset.startDate = startDateValue;
+  tr.dataset.endDate = endDateValue;
   tr.dataset.reason = reasonValue;
   tr.innerHTML = `
-    <td>${dateValue}</td>
+    <td>${startDateValue}</td>
+    <td>${endDateValue}</td>
     <td>${renderAbsenceReasonLabel(reasonValue)}</td>
-    <td><button type="button" class="danger-soft-btn remove-absence-btn">Verwijderen</button></td>
+    <td>
+      <button type="button" class="ghost-btn edit-absence-btn">Bewerken</button>
+      <button type="button" class="danger-soft-btn remove-absence-btn">Verwijderen</button>
+    </td>
   `;
+  tr.querySelector(".edit-absence-btn").addEventListener("click", () => editEmployeeAbsenceSavedRow(tr));
   tr.querySelector(".remove-absence-btn").addEventListener("click", () => removeEmployeeAbsenceRow(tr));
   employeeAbsenceTableBodyEl.appendChild(tr);
   syncAbsenceRemoveButtonsVisibility();
 }
 
-function addEmployeeAbsenceDraftRow(dateValue = "", reasonValue = "Ziek") {
+function addEmployeeAbsenceDraftRow(startDateValue = "", endDateValue = "", reasonValue = "Ziek") {
   const tr = document.createElement("tr");
   tr.dataset.rowType = "draft";
   tr.innerHTML = `
-    <td><input type="date" class="absence-date" value="${dateValue}" /></td>
+    <td><input type="date" class="absence-start-date" value="${startDateValue}" /></td>
+    <td><input type="date" class="absence-end-date" value="${endDateValue}" /></td>
     <td>
       <select class="absence-reason">
         <option value="Ziek" ${reasonValue === "Ziek" ? "selected" : ""}>Ziek</option>
@@ -1402,11 +1470,13 @@ function addEmployeeAbsenceDraftRow(dateValue = "", reasonValue = "Ziek") {
     <td><button type="button" class="danger-soft-btn remove-absence-btn">Verwijderen</button></td>
   `;
   tr.querySelector(".remove-absence-btn").addEventListener("click", () => removeEmployeeAbsenceRow(tr));
-  const dateInput = tr.querySelector(".absence-date");
-  if (dateInput) {
-    dateInput.addEventListener("input", syncAbsenceRemoveButtonsVisibility);
-    dateInput.addEventListener("change", syncAbsenceRemoveButtonsVisibility);
-  }
+  const startDateInput = tr.querySelector(".absence-start-date");
+  const endDateInput = tr.querySelector(".absence-end-date");
+  [startDateInput, endDateInput].forEach((input) => {
+    if (!input) return;
+    input.addEventListener("input", syncAbsenceRemoveButtonsVisibility);
+    input.addEventListener("change", syncAbsenceRemoveButtonsVisibility);
+  });
   employeeAbsenceTableBodyEl.appendChild(tr);
   syncAbsenceRemoveButtonsVisibility();
 }
@@ -2745,17 +2815,21 @@ document.getElementById("saveEmployeeDetailBtn").addEventListener("click", async
   const absences = rows
     .map((row) => {
       if (row.dataset.rowType === "saved") {
-        return {
-          date: row.dataset.date || "",
+        const normalizedSavedAbsence = normalizeAbsenceRange({
+          startDate: row.dataset.startDate || "",
+          endDate: row.dataset.endDate || "",
           reason: row.dataset.reason || "Ziek"
-        };
+        });
+        return normalizedSavedAbsence || null;
       }
-      return {
-        date: row.querySelector(".absence-date")?.value || "",
+      const normalizedDraftAbsence = normalizeAbsenceRange({
+        startDate: row.querySelector(".absence-start-date")?.value || "",
+        endDate: row.querySelector(".absence-end-date")?.value || "",
         reason: row.querySelector(".absence-reason")?.value || "Ziek"
-      };
+      });
+      return normalizedDraftAbsence || null;
     })
-    .filter((a) => a.date);
+    .filter(Boolean);
   if (!name || weekHours <= 0) {
     document.getElementById("employeeDetailValidation").textContent = "Naam en geldige uren zijn verplicht.";
     return;
@@ -2812,7 +2886,7 @@ document.getElementById("saveEmployeeDetailBtn").addEventListener("click", async
   renderPlanningTables();
   activatePanel("employeesPanel");
 });
-document.getElementById("addEmployeeAbsenceBtn").addEventListener("click", () => addEmployeeAbsenceDraftRow("", "Ziek"));
+document.getElementById("addEmployeeAbsenceBtn").addEventListener("click", () => addEmployeeAbsenceDraftRow("", "", "Ziek"));
 document.getElementById("copyEmployeePersonalPlanningLinkBtn").addEventListener("click", () => {
   const input = document.getElementById("employeePersonalPlanningLinkInput");
   const url = (input?.value || "").trim();

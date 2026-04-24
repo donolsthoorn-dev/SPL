@@ -102,10 +102,48 @@ alter table public.spl_employees
 create table if not exists public.spl_employee_absences (
   id uuid primary key default gen_random_uuid(),
   employee_id uuid not null references public.spl_employees (id) on delete cascade,
-  absence_date date not null,
+  start_date date not null,
+  end_date date not null,
   reason text not null default 'Ziek',
-  unique (employee_id, absence_date)
+  unique (employee_id, start_date, end_date, reason),
+  constraint spl_employee_absences_date_range_check check (start_date <= end_date)
 );
+
+alter table public.spl_employee_absences
+  add column if not exists start_date date;
+
+alter table public.spl_employee_absences
+  add column if not exists end_date date;
+
+update public.spl_employee_absences
+set
+  start_date = coalesce(start_date, absence_date),
+  end_date = coalesce(end_date, absence_date)
+where start_date is null or end_date is null;
+
+alter table public.spl_employee_absences
+  alter column start_date set not null;
+
+alter table public.spl_employee_absences
+  alter column end_date set not null;
+
+alter table public.spl_employee_absences
+  alter column absence_date drop not null;
+
+alter table public.spl_employee_absences
+  drop constraint if exists spl_employee_absences_date_range_check;
+
+alter table public.spl_employee_absences
+  add constraint spl_employee_absences_date_range_check
+  check (start_date <= end_date);
+
+alter table public.spl_employee_absences
+  drop constraint if exists spl_employee_absences_employee_id_absence_date_key;
+alter table public.spl_employee_absences
+  drop constraint if exists spl_employee_absences_employee_id_start_date_end_date_reason_key;
+alter table public.spl_employee_absences
+  add constraint spl_employee_absences_employee_id_start_date_end_date_reason_key
+  unique (employee_id, start_date, end_date, reason);
 
 create table if not exists public.spl_planning_weeks (
   week_start date primary key,

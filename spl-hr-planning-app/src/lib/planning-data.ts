@@ -32,7 +32,7 @@ export type WireframeEmployee = {
   endDate: string;
   days: number[];
   preferredLocationIds: string[];
-  absences: { date: string; reason: string }[];
+  absences: { startDate: string; endDate: string; reason: string }[];
 };
 
 export type WireframeAssignment = {
@@ -325,9 +325,14 @@ export async function seedPlanningIfEmpty(supabase: SupabaseClient): Promise<boo
     if (error) throw error;
 
     for (const a of emp.absences || []) {
+      const startDate = a.startDate || "";
+      const endDate = a.endDate || startDate;
+      if (!startDate) continue;
       const { error: ae } = await supabase.from("spl_employee_absences").insert({
         employee_id: empRow.id,
-        absence_date: a.date,
+        absence_date: startDate,
+        start_date: startDate,
+        end_date: endDate,
         reason: a.reason || "Ziek",
       });
       if (ae) throw ae;
@@ -369,10 +374,13 @@ export async function fetchMasterWireframe(supabase: SupabaseClient): Promise<{
     periodsByLoc.set(p.location_id, list);
   }
 
-  const absByEmp = new Map<string, { date: string; reason: string }[]>();
+  const absByEmp = new Map<string, { startDate: string; endDate: string; reason: string }[]>();
   for (const a of absences || []) {
     const list = absByEmp.get(a.employee_id) || [];
-    list.push({ date: a.absence_date, reason: a.reason });
+    const startDate = a.start_date ?? a.absence_date;
+    const endDate = a.end_date ?? startDate;
+    if (!startDate) continue;
+    list.push({ startDate, endDate, reason: a.reason });
     absByEmp.set(a.employee_id, list);
   }
 

@@ -24,7 +24,8 @@ const patchSchema = z.object({
   preferredLocationIds: z.array(z.string().uuid()),
   absences: z.array(
     z.object({
-      date: z.string(),
+      startDate: z.string(),
+      endDate: z.string(),
       reason: z.string(),
     }),
   ),
@@ -80,10 +81,14 @@ export async function PATCH(
     if (dErr) throw dErr;
 
     for (const a of parsed.data.absences) {
-      if (!a.date) continue;
+      const startDate = (a.startDate || "").trim();
+      const endDate = (a.endDate || startDate).trim();
+      if (!startDate) continue;
       const { error: iErr } = await auth.supabase.from("spl_employee_absences").insert({
         employee_id: id,
-        absence_date: a.date,
+        absence_date: startDate,
+        start_date: startDate,
+        end_date: endDate,
         reason: a.reason || "Ziek",
       });
       if (iErr) throw iErr;

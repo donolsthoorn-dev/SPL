@@ -97,6 +97,16 @@ function getEmployeeName(employees: WireframeEmployee[], id: string): string {
   return employees.find((e) => e.id === id)?.name ?? "-";
 }
 
+function isAbsenceOnDate(
+  absence: { startDate?: string; endDate?: string; date?: string },
+  dayIso: string,
+): boolean {
+  const start = absence.startDate ?? absence.date;
+  const end = absence.endDate ?? start;
+  if (!start || !end) return false;
+  return dayIso >= start && dayIso <= end;
+}
+
 function isEmployeeAvailableForWeekday(
   s: PublicPlanningSnapshot,
   employee: WireframeEmployee,
@@ -104,7 +114,7 @@ function isEmployeeAvailableForWeekday(
 ): boolean {
   if (!employee.days.includes(weekday)) return false;
   const dayIso = getIsoDateForWeekday(s.weekStart, weekday);
-  const isAbsent = (employee.absences || []).some((a) => a.date === dayIso);
+  const isAbsent = (employee.absences || []).some((a) => isAbsenceOnDate(a, dayIso));
   if (isAbsent) return false;
   return s.locations.some((loc) =>
     dayParts.some((dayPart) => isOpenFromPeriods(loc, weekday, dayPart, s.weekStart)),
@@ -114,7 +124,7 @@ function isEmployeeAvailableForWeekday(
 function isEmployeePlanableForWeekday(employee: WireframeEmployee, weekday: number, weekStart: string): boolean {
   if (!employee.days.includes(weekday)) return false;
   const dayIso = getIsoDateForWeekday(weekStart, weekday);
-  return !(employee.absences || []).some((a) => a.date === dayIso);
+  return !(employee.absences || []).some((a) => isAbsenceOnDate(a, dayIso));
 }
 
 function getWeekdayHeaderLabel(weekday: number, weekStart: string): string {
