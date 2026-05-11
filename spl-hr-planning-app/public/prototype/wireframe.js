@@ -46,6 +46,21 @@ function addDaysToIsoDate(iso, deltaDays) {
   return formatIsoDateLocal(dt);
 }
 
+function toMondayIsoDate(iso) {
+  const dt = parseIsoDateLocal(iso);
+  const mondayOffset = (dt.getDay() + 6) % 7;
+  dt.setDate(dt.getDate() - mondayOffset);
+  return formatIsoDateLocal(dt);
+}
+
+function buildWeekStateSnapshot() {
+  return {
+    weekStart: state.weekStart,
+    published: state.published,
+    assignments: state.assignments.map((assignment) => ({ ...assignment }))
+  };
+}
+
 /** ISO-weeknummer (1–53), EU-conventie. */
 function getIsoWeekNumber(dateStr) {
   const date = parseIsoDateLocal(dateStr);
@@ -74,21 +89,25 @@ async function loadBootstrapFromApi() {
 
 async function loadWeekFromApi(weekStart) {
   const res = await fetch(`/api/planning/week?weekStart=${encodeURIComponent(weekStart)}`, { credentials: "include" });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(errorText || `HTTP ${res.status}`);
+  }
   const data = await res.json();
   state.published = data.published ?? false;
   state.assignments = data.assignments || [];
 }
 
 async function switchToWeek(weekStart) {
-  state.weekStart = weekStart;
+  state.weekStart = toMondayIsoDate(weekStart);
   document.getElementById("weekStart").value = state.weekStart;
   planningBootDone = false;
   try {
     await loadWeekFromApi(state.weekStart);
   } catch (err) {
     console.error(err);
-    window.alert("Week kon niet geladen worden.");
+    const message = err instanceof Error ? err.message : String(err);
+    window.alert(`Week kon niet geladen worden: ${message}`);
   }
   planningBootDone = true;
   renderContextControls();
@@ -109,23 +128,20 @@ async function switchToWeek(weekStart) {
 
 function schedulePersistWeek() {
   if (!planningBootDone) return;
+  const snapshot = buildWeekStateSnapshot();
   window.clearTimeout(__weekPersistTimer);
   __weekPersistTimer = window.setTimeout(() => {
-    void persistWeekNow();
+    void persistWeekNow(snapshot);
   }, 450);
 }
 
-async function persistWeekNow() {
+async function persistWeekNow(snapshot = buildWeekStateSnapshot()) {
   try {
     const res = await fetch("/api/planning/week", {
       method: "PUT",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        weekStart: state.weekStart,
-        published: state.published,
-        assignments: state.assignments
-      })
+      body: JSON.stringify(snapshot)
     });
     if (!res.ok) console.error("Week opslaan mislukt", await res.text());
   } catch (e) {
@@ -823,6 +839,12 @@ function formatWeekStart(dateStr) {
   return `${dd}-${mm}-${yyyy}`;
 }
 
+function formatWeekPeriod(dateStr) {
+  const start = formatWeekStart(dateStr);
+  const end = formatWeekStart(addDaysToIsoDate(dateStr, 4));
+  return `${start} t/m ${end}`;
+}
+
 function formatMedewerkerCount(n) {
   return `${n} ${n === 1 ? "medewerker" : "medewerkers"}`;
 }
@@ -903,7 +925,9 @@ function updateToolbarByPanel() {
       unavailableListTitleEl.textContent = "Niet beschikbare medewerkers";
     }
     const copyWeekBtn = document.getElementById("copyWeekBtn");
+    const clearWeekBtn = document.getElementById("clearWeekBtn");
     if (copyWeekBtn) copyWeekBtn.hidden = state.activePanel === "publicPanel";
+    if (clearWeekBtn) clearWeekBtn.hidden = state.activePanel === "publicPanel";
   }
   syncPlannerAssistantVisibility();
 }
@@ -2619,7 +2643,8 @@ publicWeekSelectEl?.addEventListener("change", async (e) => {
 });
 
 document.getElementById("weekStart").addEventListener("change", async (e) => {
-  const nextWeek = e.target.value;
+  const nextWeek = toMondayIsoDate(e.target.value);
+  e.target.value = nextWeek;
   if (state.activePanel === "publicPanel" && !state.publishedWeeks.includes(nextWeek)) {
     window.alert("In Publieke inzage kun je alleen gepubliceerde weken tonen.");
     document.getElementById("weekStart").value = state.weekStart;
@@ -2646,33 +2671,93 @@ document.getElementById("nextWeekBtn").addEventListener("click", async () => {
   await switchToWeek(addDaysToIsoDate(state.weekStart, 7));
 });
 document.getElementById("copyWeekBtn").addEventListener("click", async () => {
-  const prevWeek = addDaysToIsoDate(state.weekStart, -7);
-  const prevWeekFormatted = formatWeekStart(prevWeek);
+  const sourceWeek = state.weekStart;
+  const targetWeek = addDaysToIsoDate(sourceWeek, 7);
+  planningBootDone = false;
+  try {
+    const targetRes = await fetch(`/api/planning/week?weekStart=${encodeURIComponent(targetWeek)}`, { credentials: "include" });
+    if (!targetRes.ok) {
+      const targetErr = await targetRes.text();
+      throw new Error(targetErr || `HTTP ${targetRes.status}`);
+    }
+    const targetData = await targetRes.json();
+    if (targetData.published) {
+      window.alert(
+        `Kopiëren is niet mogelijk omdat de planning van de volgende week (${formatWeekPeriod(targetWeek)}) al is gepubliceerd.`
+      );
+      return;
+    }
+  } catch (err) {
+    console.error(err);
+    const message = err instanceof Error ? err.message : String(err);
+    window.alert(`Kopiëren mislukt: ${message}`);
+    return;
+  } finally {
+    planningBootDone = true;
+  }
+
   const message =
-    `Weet je zeker dat je de gehele planning voor alle locaties en medewerkers van de vorige week (${prevWeekFormatted}) wilt kopieren?\n\n` +
-    "Dit overschrijft de huidige data en kan niet worden hersteld.\n\n" +
+    `Weet je zeker dat je de gehele planning van periode ${formatWeekPeriod(sourceWeek)} wilt kopieren naar periode ${formatWeekPeriod(targetWeek)}?\n\n` +
+    "De planning in de doelperiode wordt volledig overschreven en kan niet worden hersteld.\n\n" +
     "Ja, overschrijven = OK\n" +
     "Nee, annuleren = Annuleren";
   const confirmed = window.confirm(message);
   if (!confirmed) return;
   planningBootDone = false;
   try {
-    const res = await fetch(`/api/planning/week?weekStart=${encodeURIComponent(prevWeek)}`, { credentials: "include" });
-    if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
-    state.assignments = data.assignments || [];
+    const copyPayload = {
+      weekStart: targetWeek,
+      published: false,
+      assignments: state.assignments.map((assignment) => ({ ...assignment }))
+    };
+    const saveRes = await fetch("/api/planning/week", {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(copyPayload)
+    });
+    if (!saveRes.ok) throw new Error(await saveRes.text());
+
+    window.alert(
+      `Planning is gekopieerd van ${formatWeekPeriod(sourceWeek)} naar ${formatWeekPeriod(targetWeek)}.`
+    );
+  } catch (err) {
+    console.error(err);
+    const message = err instanceof Error ? err.message : String(err);
+    window.alert(`Kopiëren mislukt: ${message}`);
+  } finally {
+    planningBootDone = true;
+  }
+});
+document.getElementById("clearWeekBtn").addEventListener("click", async () => {
+  if (state.published) {
+    window.alert("Je kunt geen gepubliceerde week legen. Zet de week eerst terug op concept.");
+    return;
+  }
+  const message =
+    `Weet je zeker dat je alle planning wilt verwijderen voor periode ${formatWeekPeriod(state.weekStart)}?\n\n` +
+    "Deze actie verwijdert alle diensten in deze week en kan niet worden hersteld.\n\n" +
+    "Ja, week legen = OK\n" +
+    "Nee, annuleren = Annuleren";
+  const confirmed = window.confirm(message);
+  if (!confirmed) return;
+
+  planningBootDone = false;
+  try {
+    state.assignments = [];
     state.published = false;
-    document.getElementById("weekStart").value = state.weekStart;
     renderPlanningTables();
     renderPublicTable();
     renderContextControls();
-    await persistWeekNow();
-    window.alert("Vorige weekplanning is gekopieerd en huidige planning is opgeslagen.");
+    await persistWeekNow(buildWeekStateSnapshot());
+    window.alert(`Week ${formatWeekPeriod(state.weekStart)} is geleegd.`);
   } catch (err) {
     console.error(err);
-    window.alert("Kopiëren mislukt. Controleer of de vorige week bestaat.");
+    const message = err instanceof Error ? err.message : String(err);
+    window.alert(`Legen van week mislukt: ${message}`);
+  } finally {
+    planningBootDone = true;
   }
-  planningBootDone = true;
 });
 document.getElementById("backToLocationsBtn").addEventListener("click", () => activatePanel("locationsPanel"));
 document.getElementById("backToEmployeesBtn").addEventListener("click", () => activatePanel("employeesPanel"));

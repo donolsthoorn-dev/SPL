@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { assertMondayWeekStart } from "@/lib/week-start";
 
 export type DaySlots = {
   ochtend: number;
@@ -504,6 +505,8 @@ export async function saveWeekState(
   published: boolean,
   assignments: WireframeAssignment[],
 ): Promise<void> {
+  assertMondayWeekStart(weekStart);
+
   const { error: uErr } = await supabase.from("spl_planning_weeks").upsert(
     {
       week_start: weekStart,
@@ -514,22 +517,50 @@ export async function saveWeekState(
   );
   if (uErr) throw uErr;
 
-  const { error: dErr } = await supabase
+  const uniqueByKey = new Map<string, WireframeAssignment>();
+  for (const assignment of assignments) {
+    const key = [
+      weekStart,
+      assignment.locationId,
+      assignment.weekday,
+      assignment.dayPart,
+      assignment.employeeId,
+    ].join("|");
+    uniqueByKey.set(key, assignment);
+  }
+  const desiredAssignments = [...uniqueByKey.values()];
+
+  if (desiredAssignments.length > 0) {
+    const { error: upsertErr } = await supabase.from("spl_planning_assignments").upsert(
+      desiredAssignments.map((a) => ({
+        week_start: weekStart,
+        location_id: a.locationId,
+        weekday: a.weekday,
+        day_part: a.dayPart,
+        employee_id: a.employeeId,
+      })),
+      {
+        onConflict: "week_start,location_id,weekday,day_part,employee_id",
+      },
+    );
+    if (upsertErr) throw upsertErr;
+  }
+
+  const { data: currentRows, error: readErr } = await supabase
     .from("spl_planning_assignments")
-    .delete()
+    .select("id,location_id,weekday,day_part,employee_id")
     .eq("week_start", weekStart);
-  if (dErr) throw dErr;
+  if (readErr) throw readErr;
 
-  if (assignments.length === 0) return;
-
-  const { error: iErr } = await supabase.from("spl_planning_assignments").insert(
-    assignments.map((a) => ({
-      week_start: weekStart,
-      location_id: a.locationId,
-      weekday: a.weekday,
-      day_part: a.dayPart,
-      employee_id: a.employeeId,
-    })),
+  const desiredKeys = new Set(
+    desiredAssignments.map((a) => [a.locationId, a.weekday, a.dayPart, a.employeeId].join("|")),
   );
-  if (iErr) throw iErr;
+  const staleIds = (currentRows || [])
+    .filter((row) => !desiredKeys.has([row.location_id, row.weekday, row.day_part, row.employee_id].join("|")))
+    .map((row) => row.id);
+
+  if (staleIds.length > 0) {
+    const { error: deleteErr } = await supabase.from("spl_planning_assignments").delete().in("id", staleIds);
+    if (deleteErr) throw deleteErr;
+  }
 }

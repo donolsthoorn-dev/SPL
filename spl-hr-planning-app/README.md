@@ -126,3 +126,7 @@ Als `PUBLIC_APP_BASE_URL` leeg blijft, gebruikt de app op Vercel automatisch `VE
 - Medewerkersweergave toevoegen met publieke/platte deel-link per week
 - Audit log voor wijzigingen
 - (Optioneel) retry-queue voor e-mail notificaties
+
+## Incident response
+
+- Runbook voor verdwenen weekdata na kopie-actie: `incident-week-copy-recovery.md`.

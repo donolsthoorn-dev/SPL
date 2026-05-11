@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { fetchWeekState, saveWeekState } from "@/lib/planning-data";
 import { requirePlanningApiUser } from "@/lib/planning-api-auth";
+import { isMondayIsoDate } from "@/lib/week-start";
 
 const assignmentSchema = z.object({
   locationId: z.string().uuid(),
@@ -23,6 +24,9 @@ export async function GET(request: NextRequest) {
   const weekStart = request.nextUrl.searchParams.get("weekStart");
   if (!weekStart || !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
     return NextResponse.json({ error: "weekStart verplicht (YYYY-MM-DD)" }, { status: 400 });
+  }
+  if (!isMondayIsoDate(weekStart)) {
+    return NextResponse.json({ error: "weekStart moet op een maandag vallen" }, { status: 400 });
   }
 
   try {
@@ -49,8 +53,16 @@ export async function PUT(request: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Ongeldige payload", details: parsed.error.flatten() }, { status: 400 });
   }
+  if (!isMondayIsoDate(parsed.data.weekStart)) {
+    return NextResponse.json({ error: "weekStart moet op een maandag vallen" }, { status: 400 });
+  }
 
   try {
+    console.info("[planning.week.put] save request", {
+      weekStart: parsed.data.weekStart,
+      published: parsed.data.published,
+      assignments: parsed.data.assignments.length,
+    });
     await saveWeekState(
       auth.supabase,
       parsed.data.weekStart,
@@ -60,6 +72,11 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Onbekende fout";
+    console.error("[planning.week.put] save failed", {
+      weekStart: parsed.data.weekStart,
+      assignments: parsed.data.assignments.length,
+      error: message,
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
