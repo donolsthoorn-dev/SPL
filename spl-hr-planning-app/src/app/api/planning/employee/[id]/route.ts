@@ -18,7 +18,7 @@ const patchSchema = z.object({
   privateEmail: z.email().optional().or(z.literal("")),
   planningEmailIsPrivate: z.boolean().optional(),
   contractType: z.string().min(1),
-  weekHours: z.number().positive(),
+  weekHours: z.number().min(0).max(60),
   endDate: z.string(),
   days: z.array(z.number().int().min(1).max(5)).min(1),
   preferredLocationIds: z.array(z.string().uuid()),

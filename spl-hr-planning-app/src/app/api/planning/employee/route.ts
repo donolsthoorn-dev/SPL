@@ -18,7 +18,7 @@ const postSchema = z.object({
   privateEmail: z.email().optional().or(z.literal("")),
   planningEmailIsPrivate: z.boolean().optional(),
   contractType: z.enum(["Vast", "OproepKracht", "Inval"]).optional(),
-  weekHours: z.number().positive().max(60).optional(),
+  weekHours: z.number().min(0).max(60).optional(),
   endDate: z.string().optional(),
   days: z.array(z.number().int().min(1).max(5)).min(1).optional(),
   preferredLocationIds: z.array(z.string().uuid()).optional(),

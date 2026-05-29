@@ -2942,8 +2942,9 @@ document.getElementById("saveEmployeeDetailBtn").addEventListener("click", async
       return normalizedDraftAbsence || null;
     })
     .filter(Boolean);
-  if (!name || weekHours <= 0) {
-    document.getElementById("employeeDetailValidation").textContent = "Naam en geldige uren zijn verplicht.";
+  if (!name || !Number.isFinite(weekHours) || weekHours < 0) {
+    document.getElementById("employeeDetailValidation").textContent =
+      "Naam en contracturen (0 of hoger) zijn verplicht.";
     return;
   }
   if (businessEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(businessEmail)) {
