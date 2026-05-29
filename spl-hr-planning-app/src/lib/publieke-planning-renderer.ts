@@ -127,6 +127,27 @@ function isEmployeePlanableForWeekday(employee: WireframeEmployee, weekday: numb
   return !(employee.absences || []).some((a) => isAbsenceOnDate(a, dayIso));
 }
 
+function getEmployeeAbsenceForWeekday(
+  employee: WireframeEmployee,
+  weekday: number,
+  weekStart: string,
+): { startDate?: string; endDate?: string; date?: string; reason?: string } | null {
+  const dayIso = getIsoDateForWeekday(weekStart, weekday);
+  return (employee.absences || []).find((a) => isAbsenceOnDate(a, dayIso)) || null;
+}
+
+function isEmployeeSickForWeekday(employee: WireframeEmployee, weekday: number, weekStart: string): boolean {
+  const absence = getEmployeeAbsenceForWeekday(employee, weekday, weekStart);
+  if (!absence) return false;
+  return /ziek/i.test(String(absence.reason || ""));
+}
+
+function isEmployeeOnLeaveForWeekday(employee: WireframeEmployee, weekday: number, weekStart: string): boolean {
+  const absence = getEmployeeAbsenceForWeekday(employee, weekday, weekStart);
+  if (!absence) return false;
+  return /verlof/i.test(String(absence.reason || ""));
+}
+
 function getWeekdayHeaderLabel(weekday: number, weekStart: string): string {
   const names: Record<number, string> = {
     1: "MAANDAG",
@@ -188,11 +209,19 @@ export function buildPublicLocationTableHtml(s: PublicPlanningSnapshot): string 
           continue;
         }
         const ass = getAssignmentsForCell(assignments, loc.id, weekday, dayPart);
+        const dayDateNl = formatWeekStartNl(getIsoDateForWeekday(weekStart, weekday));
         const names = ass
           .map((a) => {
+            const employee = employees.find((e) => e.id === a.employeeId);
             const employeeName = getEmployeeName(employees, a.employeeId);
+            const isSick = employee ? isEmployeeSickForWeekday(employee, weekday, weekStart) : false;
+            const isLeave = employee ? isEmployeeOnLeaveForWeekday(employee, weekday, weekStart) : false;
+            const sickTooltip = `${employeeName} is ziek gemeld op ${dayDateNl}.`;
+            const leaveTooltip = `${employeeName} heeft verlof op ${dayDateNl}.`;
             return `<div class="cell-employee-chip employee-plan-chip person-status-blue" title="${escapeAttr(employeeName)}">
                  <span class="cell-employee-name">${escapeHtmlForExport(employeeName)}</span>
+                 ${isSick ? `<span class="chip-sick-badge" title="${escapeAttr(sickTooltip)}"><i class="fa-solid fa-bed" aria-hidden="true"></i><span>Ziek</span></span>` : ""}
+                 ${isLeave ? `<span class="chip-leave-badge" title="${escapeAttr(leaveTooltip)}"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i><span>Verlof</span></span>` : ""}
                </div>`;
           })
           .join("");
@@ -224,11 +253,25 @@ export function buildPublicEmployeeTableHtml(s: PublicPlanningSnapshot): string 
             )}</span></div>`,
         )
         .join("");
+      const isSickDay = isEmployeeSickForWeekday(emp, weekday, weekStart);
+      const isLeaveDay = isEmployeeOnLeaveForWeekday(emp, weekday, weekStart);
       const isPlanableDay = isEmployeePlanableForWeekday(emp, weekday, weekStart);
       const isEmptyButAvailable = !day && isEmployeeAvailableForWeekday(s, emp, weekday);
-      const dayClass = !isPlanableDay ? "closed-cell" : isEmptyButAvailable ? "ok" : "";
+      const dayClass = isSickDay
+        ? "sick-cell"
+        : !isPlanableDay
+          ? "closed-cell"
+          : isEmptyButAvailable
+            ? "ok"
+            : "";
+      const sickBadge = isSickDay
+        ? '<span class="cell-sick-marker" title="Ziek gemeld"><i class="fa-solid fa-bed cell-sick-icon" aria-hidden="true"></i><span>Ziek</span></span>'
+        : "";
+      const leaveBadge = isLeaveDay
+        ? '<span class="cell-leave-marker" title="Bijzonder verlof"><i class="fa-solid fa-calendar-check cell-leave-icon" aria-hidden="true"></i><span>Verlof</span></span>'
+        : "";
       const cellInner = day || (isEmptyButAvailable ? "Beschikbaar" : "Afwezig");
-      employeeHtml += `<td class="${dayClass}">${cellInner}</td>`;
+      employeeHtml += `<td class="${dayClass}">${sickBadge}${leaveBadge}${cellInner}</td>`;
     }
     const total = assignments.filter((a) => a.employeeId === emp.id).length * 4.5;
     employeeHtml += `<td>${total}u / ${emp.weekHours}u</td></tr>`;
@@ -316,7 +359,16 @@ export function getLocationPlanningVerticalBlocks(
           continue;
         }
         const ass = getAssignmentsForCell(assignments, loc.id, weekday, dayPart);
-        const names = ass.map((a) => getEmployeeName(employees, a.employeeId)).filter(Boolean);
+        const names = ass
+          .map((a) => {
+            const employee = employees.find((e) => e.id === a.employeeId);
+            const name = getEmployeeName(employees, a.employeeId);
+            if (!name || name === "-") return "";
+            if (employee && isEmployeeSickForWeekday(employee, weekday, weekStart)) return `${name} (ziek)`;
+            if (employee && isEmployeeOnLeaveForWeekday(employee, weekday, weekStart)) return `${name} (verlof)`;
+            return name;
+          })
+          .filter(Boolean);
         rows.push({ label: dayLabel, value: names.length ? names.join(", ") : "—" });
       }
 
@@ -377,13 +429,26 @@ export function getPersonalEmployeeVerticalSchedule(
 
   for (let weekday = 1; weekday <= 5; weekday++) {
     const dayAssignments = s.assignments.filter((a) => a.employeeId === emp.id && a.weekday === weekday);
+    const isSickDay = isEmployeeSickForWeekday(emp, weekday, s.weekStart);
+    const isLeaveDay = isEmployeeOnLeaveForWeekday(emp, weekday, s.weekStart);
+    const assignmentText = dayAssignments
+      .map((a) => `${getLocationName(s.locations, a.locationId)} (${a.dayPart})`)
+      .join(", ");
     let value: string;
     if (!isEmployeePlanableForWeekday(emp, weekday, s.weekStart)) {
-      value = "Afwezig";
+      if (isSickDay) {
+        value = assignmentText ? `${assignmentText} (ziek gemeld)` : "Ziek";
+      } else if (isLeaveDay) {
+        value = assignmentText ? `${assignmentText} (verlof)` : "Verlof";
+      } else {
+        value = "Afwezig";
+      }
     } else if (dayAssignments.length === 0) {
       value = isEmployeeAvailableForWeekday(s, emp, weekday) ? "Beschikbaar" : "Afwezig";
     } else {
-      value = dayAssignments.map((a) => `${getLocationName(s.locations, a.locationId)} (${a.dayPart})`).join(", ");
+      value = assignmentText;
+      if (isSickDay) value = `${value} (ziek gemeld)`;
+      else if (isLeaveDay) value = `${value} (verlof)`;
     }
     rows.push({ label: dayLabels[weekday - 1]!, value });
   }

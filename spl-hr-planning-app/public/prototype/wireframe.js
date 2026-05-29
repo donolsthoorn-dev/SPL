@@ -7,26 +7,6 @@ const DEFAULT_MAX_EMPLOYEES = 4;
 let locations = [];
 let employees = [];
 
-const state = {
-  activePanel: "locationsPanel",
-  weekStart: "2026-04-13",
-  published: false,
-  selectedCell: null,
-  selectedEmployeeCell: null,
-  selectedLocationId: null,
-  selectedEmployeeId: null,
-  mailEligibleCount: 0,
-  mailLocationEligibleCount: 0,
-  mailSending: false,
-  publishedWeeks: [],
-  locationCellFilter: "all",
-  locationFilter: "all",
-  assignments: [],
-  /** Eerste kolom standaard A–Z */
-  locationListSort: { key: "name", dir: "asc" },
-  employeeListSort: { key: "name", dir: "asc" }
-};
-
 /** YYYY-MM-DD als kalenderdatum in lokale tijd (voorkomt UTC-shift van toISOString). */
 function parseIsoDateLocal(iso) {
   const [y, m, d] = iso.split("-").map(Number);
@@ -52,6 +32,31 @@ function toMondayIsoDate(iso) {
   dt.setDate(dt.getDate() - mondayOffset);
   return formatIsoDateLocal(dt);
 }
+
+/** Maandag (YYYY-MM-DD) van de kalenderweek waarin vandaag valt. */
+function getCurrentMondayIsoDate() {
+  return toMondayIsoDate(formatIsoDateLocal(new Date()));
+}
+
+const state = {
+  activePanel: "locationsPanel",
+  weekStart: getCurrentMondayIsoDate(),
+  published: false,
+  selectedCell: null,
+  selectedEmployeeCell: null,
+  selectedLocationId: null,
+  selectedEmployeeId: null,
+  mailEligibleCount: 0,
+  mailLocationEligibleCount: 0,
+  mailSending: false,
+  publishedWeeks: [],
+  locationCellFilter: "all",
+  locationFilter: "all",
+  assignments: [],
+  /** Eerste kolom standaard A–Z */
+  locationListSort: { key: "name", dir: "asc" },
+  employeeListSort: { key: "name", dir: "asc" }
+};
 
 function buildWeekStateSnapshot() {
   return {
@@ -455,14 +460,40 @@ function wouldExceedFixedEmployeesRule(locationId, employeeId) {
   return fixedIds.size >= 4;
 }
 
-function isEmployeeAlreadyPlannedAtTimeslot(employeeId, weekday, dayPart, ignoreLocationId = null) {
-  return state.assignments.some(
-    (a) =>
-      a.employeeId === employeeId &&
-      a.weekday === weekday &&
-      a.dayPart === dayPart &&
-      (ignoreLocationId === null || a.locationId !== ignoreLocationId)
+/** Duintop VSO/TSO/BSO: meerdere Duintop-locaties op hetzelfde dagdeel is toegestaan. */
+function isDuintopLocation(locationId) {
+  const location = locations.find((l) => l.id === locationId);
+  if (!location) return false;
+  return /^duintop\s/i.test(String(location.name || "").trim());
+}
+
+function getTimeslotAssignments(employeeId, weekday, dayPart) {
+  return state.assignments.filter(
+    (a) => a.employeeId === employeeId && a.weekday === weekday && a.dayPart === dayPart
   );
+}
+
+/** Conflict als iemand op 2+ locaties staat, tenzij alle betrokken locaties Duintop zijn. */
+function timeslotHasDuplicateConflict(employeeId, weekday, dayPart) {
+  const slotAssignments = getTimeslotAssignments(employeeId, weekday, dayPart);
+  if (slotAssignments.length <= 1) return false;
+  const locationIds = [...new Set(slotAssignments.map((a) => a.locationId))];
+  return !locationIds.every(isDuintopLocation);
+}
+
+function isEmployeeAlreadyPlannedAtTimeslot(employeeId, weekday, dayPart, ignoreLocationId = null) {
+  return state.assignments.some((a) => {
+    if (a.employeeId !== employeeId || a.weekday !== weekday || a.dayPart !== dayPart) return false;
+    if (ignoreLocationId !== null && a.locationId === ignoreLocationId) return false;
+    if (
+      ignoreLocationId !== null &&
+      isDuintopLocation(ignoreLocationId) &&
+      isDuintopLocation(a.locationId)
+    ) {
+      return false;
+    }
+    return true;
+  });
 }
 
 function getTimeslotAssignmentCount(employeeId, weekday, dayPart) {
@@ -507,25 +538,19 @@ function getEmployeePlannedHours(employeeId) {
 }
 
 function hasEmployeeTimeslotConflict(employeeId) {
-  const grouped = new Map();
+  const keys = new Set();
   state.assignments
     .filter((a) => a.employeeId === employeeId)
-    .forEach((a) => {
-      const key = `${a.weekday}-${a.dayPart}`;
-      grouped.set(key, (grouped.get(key) || 0) + 1);
-    });
-  return Array.from(grouped.values()).some((count) => count > 1);
+    .forEach((a) => keys.add(`${a.weekday}-${a.dayPart}`));
+  for (const key of keys) {
+    const [weekday, dayPart] = key.split("-");
+    if (timeslotHasDuplicateConflict(employeeId, Number(weekday), dayPart)) return true;
+  }
+  return false;
 }
 
 function hasEmployeeWeekdayConflict(employeeId, weekday) {
-  const grouped = new Map();
-  state.assignments
-    .filter((a) => a.employeeId === employeeId && a.weekday === weekday)
-    .forEach((a) => {
-      const key = a.dayPart;
-      grouped.set(key, (grouped.get(key) || 0) + 1);
-    });
-  return Array.from(grouped.values()).some((count) => count > 1);
+  return dayParts.some((dayPart) => timeslotHasDuplicateConflict(employeeId, weekday, dayPart));
 }
 
 function getEmployeePlanningStatusClass(employee) {
@@ -622,20 +647,12 @@ function removeAssignmentFromCell(locationId, weekday, dayPart, employeeId) {
 }
 
 function hasDuplicateTimeslotAssignment(employeeId, weekday, dayPart, locationId) {
-  const timeslotCount = getTimeslotAssignmentCount(employeeId, weekday, dayPart);
-  if (timeslotCount > 1) return true;
-  return state.assignments.some(
-    (a) =>
-      a.employeeId === employeeId &&
-      a.weekday === weekday &&
-      a.dayPart === dayPart &&
-      a.locationId !== locationId
-  );
+  void locationId;
+  return timeslotHasDuplicateConflict(employeeId, weekday, dayPart);
 }
 
 function getConflictDatesForEmployeeAtTimeslot(employeeId, weekday, dayPart) {
-  const count = getTimeslotAssignmentCount(employeeId, weekday, dayPart);
-  if (count <= 1) return [];
+  if (!timeslotHasDuplicateConflict(employeeId, weekday, dayPart)) return [];
   const d = parseIsoDateLocal(addDaysToIsoDate(state.weekStart, weekday - 1));
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -2186,6 +2203,16 @@ function renderConflictsAndSuggestions() {
     conflictMessages.push(`Overbezetting: maximaal ${capacity.maxEmployees} medewerkers toegestaan.`);
   }
   ass.forEach((a) => {
+    if (
+      !hasDuplicateTimeslotAssignment(
+        a.employeeId,
+        state.selectedCell.weekday,
+        state.selectedCell.dayPart,
+        state.selectedCell.locationId
+      )
+    ) {
+      return;
+    }
     const otherLocationIds = getOtherTimeslotLocations(
       a.employeeId,
       state.selectedCell.weekday,
@@ -3123,6 +3150,8 @@ document.getElementById("addEmployeeBtn").addEventListener("click", async () => 
 
 (async function bootPlanningApp() {
   const shell = document.querySelector(".app-shell");
+  const weekStartInput = document.getElementById("weekStart");
+  if (weekStartInput) weekStartInput.value = state.weekStart;
   try {
     const seededMaster = await loadBootstrapFromApi();
     await loadWeekFromApi(state.weekStart);
