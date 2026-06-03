@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 const MESSAGE_TYPE = "spl-planning-app";
 
@@ -8,32 +8,51 @@ type Props = {
   iframeSrc: string;
 };
 
+function finishLoading(
+  setLoading: (value: boolean) => void,
+  fallbackTimer: { current: ReturnType<typeof setTimeout> | null },
+) {
+  setLoading(false);
+  if (fallbackTimer.current) {
+    clearTimeout(fallbackTimer.current);
+    fallbackTimer.current = null;
+  }
+}
+
 export function PlanningWorkspace({ iframeSrc }: Props) {
   const [loading, setLoading] = useState(true);
   const fallbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       const d = event.data;
       if (!d || d.type !== MESSAGE_TYPE) return;
       if (d.phase === "ready" || d.phase === "error") {
-        setLoading(false);
-        if (fallbackTimer.current) {
-          clearTimeout(fallbackTimer.current);
-          fallbackTimer.current = null;
-        }
+        finishLoading(setLoading, fallbackTimer);
       }
     };
 
     window.addEventListener("message", onMessage);
-    fallbackTimer.current = setTimeout(() => setLoading(false), 25_000);
+    fallbackTimer.current = setTimeout(() => finishLoading(setLoading, fallbackTimer), 25_000);
 
     return () => {
       window.removeEventListener("message", onMessage);
       if (fallbackTimer.current) clearTimeout(fallbackTimer.current);
     };
   }, []);
+
+  const requestIframeStatus = () => {
+    try {
+      iframeRef.current?.contentWindow?.postMessage(
+        { type: MESSAGE_TYPE, phase: "parent-ready" },
+        window.location.origin,
+      );
+    } catch {
+      /* iframe nog niet bereikbaar */
+    }
+  };
 
   return (
     <div className="planning-frame-wrap">
@@ -49,7 +68,13 @@ export function PlanningWorkspace({ iframeSrc }: Props) {
           </div>
         </div>
       ) : null}
-      <iframe className="planning-frame" title="SPL weekplanning" src={iframeSrc} />
+      <iframe
+        ref={iframeRef}
+        className="planning-frame"
+        title="SPL weekplanning"
+        src={iframeSrc}
+        onLoad={requestIframeStatus}
+      />
     </div>
   );
 }

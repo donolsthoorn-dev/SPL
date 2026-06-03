@@ -188,18 +188,32 @@ async function persistWeekNow(snapshot = buildWeekStateSnapshot()) {
   }
 }
 
+let planningShellPhase = "loading";
+
 function notifyParentPlanningShell(phase) {
-  try {
-    if (window.parent !== window) {
-      window.parent.postMessage(
-        { type: "spl-planning-app", phase },
-        window.location.origin
-      );
+  planningShellPhase = phase;
+  const payload = { type: "spl-planning-app", phase };
+  const send = () => {
+    try {
+      if (window.parent !== window) {
+        window.parent.postMessage(payload, window.location.origin);
+      }
+    } catch (_) {
+      /* ignore */
     }
-  } catch (_) {
-    /* ignore */
-  }
+  };
+  send();
+  [50, 150, 400, 1000].forEach((ms) => window.setTimeout(send, ms));
 }
+
+window.addEventListener("message", (event) => {
+  if (event.origin !== window.location.origin) return;
+  const data = event.data;
+  if (!data || data.type !== "spl-planning-app" || data.phase !== "parent-ready") return;
+  if (planningShellPhase === "ready" || planningShellPhase === "error") {
+    notifyParentPlanningShell(planningShellPhase);
+  }
+});
 
 const panelTabs = document.querySelectorAll(".module-tab");
 const panels = document.querySelectorAll(".panel");
@@ -967,11 +981,13 @@ function updateToolbarByPanel() {
     const hideGlobalSearch =
       state.activePanel === "locationPlanningPanel" || isPublicPanel;
     globalSearchEl.style.display = hideGlobalSearch ? "none" : "block";
-    quickFilterEl.style.display = isPublicPanel ? "none" : "inline-block";
+    if (quickFilterEl) quickFilterEl.style.display = isPublicPanel ? "none" : "inline-block";
     statusSummaryEl.style.display = isPublicPanel ? "none" : "inline-block";
     toolbarEl.style.display = "flex";
     planningLegendEl.style.display = state.activePanel === "locationPlanningPanel" ? "grid" : "none";
-    syncPublicEmailToolbar();
+    const emailToolbar = document.getElementById("publicEmailToolbar");
+    if (emailToolbar) emailToolbar.hidden = !isPublicPanel;
+    if (isPublicPanel) syncPublicEmailToolbar();
     if (assistantSearchInputEl) {
       assistantSearchInputEl.placeholder =
         state.activePanel === "employeePlanningPanel" ? "Zoek locatie..." : "Zoek medewerker...";
@@ -3280,6 +3296,19 @@ document.getElementById("addEmployeeBtn").addEventListener("click", async () => 
 });
 
 (async function bootPlanningApp() {
+  if (typeof SplPlanningCore === "undefined") {
+    const shell = document.querySelector(".app-shell");
+    const msg =
+      "planning-core.js ontbreekt. Voer lokaal <code>npm run build:planning-core</code> uit en herstart de dev-server.";
+    if (shell) {
+      shell.innerHTML =
+        `<div style="padding:2rem;font-family:system-ui,sans-serif;max-width:520px;">` +
+        `<p><strong>Planner kan niet starten.</strong></p><p>${msg}</p></div>`;
+    }
+    notifyParentPlanningShell("error");
+    return;
+  }
+
   const shell = document.querySelector(".app-shell");
   const weekStartInput = document.getElementById("weekStart");
   if (weekStartInput) weekStartInput.value = state.weekStart;
