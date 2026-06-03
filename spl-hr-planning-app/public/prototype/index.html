@@ -284,8 +284,17 @@
                 <button type="button" id="publicCopyLinkBtn" class="ghost-btn" disabled title="Kopieer openbare link naar klembord">
                   Link
                 </button>
-                <button type="button" id="publicSendEmailBtn" class="ghost-btn" disabled title="Stuur planning per e-mail naar medewerkers met e-mailadres">
+                <button type="button" id="publicSendEmailBtn" class="ghost-btn" disabled title="Stuur planning per e-mail naar medewerkers die deze week nog geen mail hebben">
                   E-mail planning naar 0 medewerkers
+                </button>
+                <button
+                  type="button"
+                  id="publicSendEmailCatchupBtn"
+                  class="ghost-btn"
+                  hidden
+                  title="Alleen medewerkers die de planning-mail nog niet hebben ontvangen"
+                >
+                  Alleen gemiste (0)
                 </button>
                 <button
                   type="button"

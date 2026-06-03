@@ -47,7 +47,11 @@ const state = {
   selectedLocationId: null,
   selectedEmployeeId: null,
   mailEligibleCount: 0,
+  mailCatchupCount: 0,
+  mailDeliveredCount: 0,
   mailLocationEligibleCount: 0,
+  mailLocationCatchupCount: 0,
+  mailLocationDeliveredCount: 0,
   mailSending: false,
   publishedWeeks: [],
   locationCellFilter: "all",
@@ -769,19 +773,38 @@ function syncPublicPanelActions() {
   if (excel) excel.disabled = dis;
   if (pdf) pdf.disabled = dis;
   if (link) link.disabled = dis;
+  const catchupBtn = document.getElementById("publicSendEmailCatchupBtn");
   if (emailBtn) {
-    const emailDis = dis || state.mailSending || state.mailEligibleCount <= 0;
+    const pending = state.mailCatchupCount;
+    const emailDis = dis || state.mailSending || pending <= 0;
     emailBtn.disabled = emailDis;
-    emailBtn.textContent = state.mailSending
-      ? "E-mail verzenden..."
-      : `E-mail planning naar ${formatMedewerkerCount(state.mailEligibleCount)}`;
+    if (state.mailSending) {
+      emailBtn.textContent = "E-mail verzenden...";
+    } else if (pending <= 0 && state.mailDeliveredCount > 0) {
+      emailBtn.textContent = "Alle medewerkers gemaild";
+    } else {
+      emailBtn.textContent = `E-mail planning naar ${formatMedewerkerCount(pending)}`;
+    }
+  }
+  if (catchupBtn) {
+    const showCatchup = !dis && state.mailDeliveredCount > 0 && state.mailCatchupCount > 0;
+    catchupBtn.hidden = !showCatchup;
+    catchupBtn.disabled = state.mailSending || state.mailCatchupCount <= 0;
+    catchupBtn.textContent = state.mailSending
+      ? "Bezig..."
+      : `Alleen gemiste (${formatMedewerkerCount(state.mailCatchupCount)})`;
   }
   if (emailLocBtn) {
-    const emailLocDis = dis || state.mailSending || state.mailLocationEligibleCount <= 0;
+    const pendingLoc = state.mailLocationCatchupCount;
+    const emailLocDis = dis || state.mailSending || pendingLoc <= 0;
     emailLocBtn.disabled = emailLocDis;
-    emailLocBtn.textContent = state.mailSending
-      ? "E-mail verzenden..."
-      : `E-mail planning naar ${formatLocatieCount(state.mailLocationEligibleCount)}`;
+    if (state.mailSending) {
+      emailLocBtn.textContent = "E-mail verzenden...";
+    } else if (pendingLoc <= 0 && state.mailLocationDeliveredCount > 0) {
+      emailLocBtn.textContent = "Alle locaties gemaild";
+    } else {
+      emailLocBtn.textContent = `E-mail planning naar ${formatLocatieCount(pendingLoc)}`;
+    }
   }
 }
 
@@ -2162,11 +2185,19 @@ async function refreshPublicEmailState() {
     const dataEmp = await resEmp.json();
     const dataLoc = await resLoc.json();
     state.mailEligibleCount = Number(dataEmp.eligibleCount || 0);
+    state.mailCatchupCount = Number(dataEmp.catchupCount ?? dataEmp.eligibleCount ?? 0);
+    state.mailDeliveredCount = Number(dataEmp.deliveredCount || 0);
     state.mailLocationEligibleCount = Number(dataLoc.eligibleCount || 0);
+    state.mailLocationCatchupCount = Number(dataLoc.catchupCount ?? dataLoc.eligibleCount ?? 0);
+    state.mailLocationDeliveredCount = Number(dataLoc.deliveredCount || 0);
   } catch (e) {
     console.error("Mailstatus laden mislukt", e);
     state.mailEligibleCount = 0;
+    state.mailCatchupCount = 0;
+    state.mailDeliveredCount = 0;
     state.mailLocationEligibleCount = 0;
+    state.mailLocationCatchupCount = 0;
+    state.mailLocationDeliveredCount = 0;
   } finally {
     syncPublicPanelActions();
   }
@@ -2597,34 +2628,94 @@ document.getElementById("publicUnpublishBtn").addEventListener("click", async ()
 document.getElementById("publicExportExcelBtn").addEventListener("click", () => exportPublicExcel());
 document.getElementById("publicExportPdfBtn").addEventListener("click", () => exportPublicPdf());
 document.getElementById("publicCopyLinkBtn").addEventListener("click", () => copyPublicPlanningLink());
-document.getElementById("publicSendEmailBtn").addEventListener("click", async () => {
-  if (!state.published) {
-    window.alert("Publiceer eerst de planning.");
-    return;
-  }
-  if (state.mailEligibleCount <= 0) {
-    window.alert("Geen medewerkers met e-mailadres.");
-    return;
-  }
-  const ok = window.confirm(`E-mail planning versturen naar ${formatMedewerkerCount(state.mailEligibleCount)}?`);
-  if (!ok) return;
-
+async function runPlanningEmailDispatch(startUrl, confirmLabel) {
   state.mailSending = true;
   syncPublicPanelActions();
   try {
-    const res = await fetch(`/api/planning/public-notify?weekStart=${encodeURIComponent(state.weekStart)}`, {
-      method: "POST",
-      credentials: "include"
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error || "Mail versturen mislukt");
-    window.alert(`E-mail verzonden naar ${formatMedewerkerCount(Number(data.sent || 0))}.`);
+    const startRes = await fetch(startUrl, { method: "POST", credentials: "include" });
+    const startData = await startRes.json();
+    if (!startRes.ok) throw new Error(startData?.error || "Mail starten mislukt");
+    if (!startData.dispatchId) {
+      window.alert(startData.message || "Geen e-mails te versturen.");
+      return;
+    }
+
+    let pending = Number(startData.pending || 0);
+    let sent = 0;
+    let failed = 0;
+    const failureLines = [];
+    const emailBtn = document.getElementById("publicSendEmailBtn");
+    const locBtn = document.getElementById("publicSendLocationEmailBtn");
+
+    while (pending > 0) {
+      const progress = `${sent + failed}/${startData.total} verwerkt…`;
+      if (emailBtn && state.mailSending) emailBtn.textContent = progress;
+      if (locBtn && state.mailSending) locBtn.textContent = progress;
+
+      const procRes = await fetch(
+        `/api/planning/email-dispatch/process?dispatchId=${encodeURIComponent(startData.dispatchId)}`,
+        { method: "POST", credentials: "include" }
+      );
+      const procData = await procRes.json();
+      if (!procRes.ok) throw new Error(procData?.error || "Mail verwerken mislukt");
+      pending = Number(procData.pending || 0);
+      sent = Number(procData.sent || 0);
+      failed = Number(procData.failed || 0);
+      if (Array.isArray(procData.failures)) failureLines.push(...procData.failures);
+    }
+
+    let msg = `Klaar: ${sent} verzonden`;
+    if (failed > 0) msg += `, ${failed} mislukt`;
+    if (Number(startData.skipped || 0) > 0) {
+      msg += `\n\n${formatMedewerkerCount(startData.skipped)} hadden deze planning al (geen dubbele mail).`;
+    }
+    if (failureLines.length) msg += `\n\n${failureLines.slice(0, 5).join("\n")}`;
+    window.alert(msg);
   } catch (e) {
     window.alert("Mail versturen mislukt.\n\n" + (e.message || e));
   } finally {
     state.mailSending = false;
     await refreshPublicEmailState();
   }
+}
+
+function confirmAndDispatchEmployeeEmails(mode) {
+  if (!state.published) {
+    window.alert("Publiceer eerst de planning.");
+    return;
+  }
+  const pending = state.mailCatchupCount;
+  if (pending <= 0) {
+    window.alert(
+      state.mailDeliveredCount > 0
+        ? "Alle medewerkers met e-mail hebben deze planning al ontvangen."
+        : "Geen medewerkers met e-mailadres."
+    );
+    return;
+  }
+  const intro =
+    mode === "catchup"
+      ? `Alleen ${formatMedewerkerCount(pending)} medewerkers die de mail nog niet hebben?`
+      : `E-mail planning versturen naar ${formatMedewerkerCount(pending)} medewerkers?`;
+  const skippedNote =
+    state.mailDeliveredCount > 0
+      ? `\n\n${formatMedewerkerCount(state.mailDeliveredCount)} hebben de mail al en worden overgeslagen.`
+      : "";
+  if (!window.confirm(intro + skippedNote)) return;
+
+  const modeParam = mode === "catchup" ? "&mode=catchup" : "";
+  void runPlanningEmailDispatch(
+    `/api/planning/public-notify?weekStart=${encodeURIComponent(state.weekStart)}${modeParam}`,
+    intro
+  );
+}
+
+document.getElementById("publicSendEmailBtn").addEventListener("click", () => {
+  confirmAndDispatchEmployeeEmails("full");
+});
+
+document.getElementById("publicSendEmailCatchupBtn")?.addEventListener("click", () => {
+  confirmAndDispatchEmployeeEmails("catchup");
 });
 
 document.getElementById("publicSendLocationEmailBtn").addEventListener("click", async () => {
@@ -2632,29 +2723,28 @@ document.getElementById("publicSendLocationEmailBtn").addEventListener("click", 
     window.alert("Publiceer eerst de planning.");
     return;
   }
-  if (state.mailLocationEligibleCount <= 0) {
-    window.alert("Geen locaties met e-mailadres.");
+  const pending = state.mailLocationCatchupCount;
+  if (pending <= 0) {
+    window.alert(
+      state.mailLocationDeliveredCount > 0
+        ? "Alle locaties met e-mail hebben deze planning al ontvangen."
+        : "Geen locaties met e-mailadres."
+    );
     return;
   }
-  const ok = window.confirm(`E-mail planning versturen naar ${formatLocatieCount(state.mailLocationEligibleCount)}?`);
+  const skippedNote =
+    state.mailLocationDeliveredCount > 0
+      ? `\n\n${formatLocatieCount(state.mailLocationDeliveredCount)} hebben de mail al en worden overgeslagen.`
+      : "";
+  const ok = window.confirm(
+    `E-mail planning versturen naar ${formatLocatieCount(pending)} locaties?${skippedNote}`
+  );
   if (!ok) return;
 
-  state.mailSending = true;
-  syncPublicPanelActions();
-  try {
-    const res = await fetch(`/api/planning/public-notify-locations?weekStart=${encodeURIComponent(state.weekStart)}`, {
-      method: "POST",
-      credentials: "include"
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error || "Mail versturen mislukt");
-    window.alert(`E-mail verzonden naar ${formatLocatieCount(Number(data.sent || 0))}.`);
-  } catch (e) {
-    window.alert("Mail versturen mislukt.\n\n" + (e.message || e));
-  } finally {
-    state.mailSending = false;
-    await refreshPublicEmailState();
-  }
+  void runPlanningEmailDispatch(
+    `/api/planning/public-notify-locations?weekStart=${encodeURIComponent(state.weekStart)}`,
+    ""
+  );
 });
 document.getElementById("publicModeSelect").addEventListener("change", () => {
   if (state.activePanel === "publicPanel") {

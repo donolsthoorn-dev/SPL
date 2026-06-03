@@ -58,11 +58,13 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function createPlanningMailSender(): (payload: PlanningMailPayload) => Promise<void> {
+function createPlanningMailSender(): (
+  payload: PlanningMailPayload,
+) => Promise<{ providerMessageId?: string }> {
   if (usesResend()) {
     const resend = new Resend(process.env.RESEND_API_KEY!.trim());
     return async (payload) => {
-      const { error } = await resend.emails.send({
+      const { data, error } = await resend.emails.send({
         from: payload.from,
         to: payload.to,
         ...(payload.replyTo ? { replyTo: payload.replyTo } : {}),
@@ -72,6 +74,7 @@ function createPlanningMailSender(): (payload: PlanningMailPayload) => Promise<v
       if (error) {
         throw new Error(error.message);
       }
+      return { providerMessageId: data?.id };
     };
   }
 
@@ -99,14 +102,52 @@ function createPlanningMailSender(): (payload: PlanningMailPayload) => Promise<v
   });
 
   return async (payload) => {
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: payload.from,
       ...(payload.replyTo ? { replyTo: payload.replyTo } : {}),
       to: payload.to,
       subject: payload.subject,
       html: payload.html,
     });
+    const messageId =
+      typeof info.messageId === "string" && info.messageId.trim() ? info.messageId : undefined;
+    return { providerMessageId: messageId };
   };
+}
+
+export async function sendSinglePlanningPublishEmail(args: {
+  weekStart: string;
+  planTitle: string;
+  notes?: string | null;
+  recipient: Recipient;
+  audience: PlanningEmailAudience;
+}): Promise<{ providerMessageId?: string }> {
+  const from = getRequiredEnv("MAIL_FROM");
+  const replyTo = process.env.MAIL_REPLY_TO?.trim() || undefined;
+  const baseUrl = getPublicAppBaseUrl();
+  const logoUrl = `${baseUrl}/mail/spl-logo.png`;
+  const sendMail = createPlanningMailSender();
+  const token =
+    args.audience === "employee"
+      ? createPublicPlanningToken(args.weekStart, args.recipient.id)
+      : createPublicLocationPlanningToken(args.weekStart, args.recipient.id);
+  const publicLink = `${baseUrl}/publieke-planning?t=${encodeURIComponent(token)}`;
+  const html = buildPlanningPublishEmailHtml({
+    recipientName: args.recipient.name,
+    weekStart: args.weekStart,
+    planTitle: args.planTitle,
+    notes: args.notes,
+    publicLink,
+    logoUrl,
+    audience: args.audience,
+  });
+  return sendMail({
+    from,
+    replyTo,
+    to: args.recipient.email,
+    subject: `Nieuwe planning beschikbaar - week ${getIsoWeekNumber(args.weekStart)}`,
+    html,
+  });
 }
 
 export function buildPlanningPublishEmailHtml(args: {
@@ -163,6 +204,7 @@ export function buildPlanningPublishEmailHtml(args: {
   </html>`;
 }
 
+/** @deprecated Gebruik de e-mailwachtrij via public-notify API. */
 export async function sendPlanningPublishEmails(
   args: SendPlanningPublishEmailsArgs,
 ): Promise<{ sent: number; failed: number; failures: string[] }> {
@@ -205,6 +247,7 @@ export async function sendPlanningPublishEmails(
   return { sent, failed: failures.length, failures };
 }
 
+/** @deprecated Gebruik de e-mailwachtrij via public-notify API. */
 export async function sendLocationPlanningPublishEmails(args: {
   weekStart: string;
   planTitle: string;

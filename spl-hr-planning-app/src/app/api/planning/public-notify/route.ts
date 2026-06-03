@@ -1,39 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { fetchWeekState, getEmployeePlanningEmail } from "@/lib/planning-data";
-import { getIsoWeekNumber } from "@/lib/publieke-planning-renderer";
+import { fetchWeekState } from "@/lib/planning-data";
+import { mapEmailSendError } from "@/lib/planning-email-api";
+import {
+  createPlanningEmailDispatch,
+  getEmailDispatchStatus,
+} from "@/lib/planning-email-queue";
 import { requirePlanningApiUser } from "@/lib/planning-api-auth";
-import { sendPlanningPublishEmails } from "@/lib/planning-email";
 
 const WEEK_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-function mapEmailSendError(error: unknown): string {
-  const raw = error instanceof Error ? error.message : "Onbekende fout";
-  if (
-    raw.includes("RESEND_API_KEY") ||
-    raw.includes("SMTP_HOST") ||
-    raw.includes("SMTP_PORT") ||
-    raw.includes("SMTP_USER") ||
-    raw.includes("SMTP_PASS") ||
-    raw.includes("SMTP_SECURE") ||
-    raw.includes("MAIL_FROM")
-  ) {
-    return "E-mail is nog niet geconfigureerd op de server. Zet RESEND_API_KEY (Resend) of SMTP-* variabelen in .env.local / Vercel en herstart of redeploy.";
-  }
-  if (raw.includes("PUBLIC_APP_BASE_URL")) {
-    return "PUBLIC_APP_BASE_URL ontbreekt. Voeg deze toe aan .env.local en herstart de app.";
-  }
-  if (raw.includes("PUBLIC_LINK_SIGNING_SECRET")) {
-    return "PUBLIC_LINK_SIGNING_SECRET ontbreekt. Voeg deze toe aan .env.local en herstart de app.";
-  }
-  if (
-    raw.includes("spl_employees") &&
-    (raw.includes("private_email") || raw.includes("planning_email_is_private"))
-  ) {
-    return "Databasekolommen voor medewerker e-mail ontbreken. Voer in Supabase SQL Editor uit: supabase-migrate-employee-dual-email.sql";
-  }
-  return raw;
-}
 
 function parseWeekStart(request: NextRequest): string | null {
   const weekStart = request.nextUrl.searchParams.get("weekStart");
@@ -41,22 +15,9 @@ function parseWeekStart(request: NextRequest): string | null {
   return weekStart;
 }
 
-async function getRecipients(supabase: SupabaseClient) {
-  const { data, error } = await supabase
-    .from("spl_employees")
-    .select("id, name, email, private_email, planning_email_is_private");
-  if (error) throw error;
-  return (data ?? [])
-    .map((r) => {
-      const selectedEmail =
-        getEmployeePlanningEmail({
-          email: r.email,
-          privateEmail: r.private_email,
-          planningEmailIsPrivate: r.planning_email_is_private,
-        }) ?? (typeof r.email === "string" ? r.email.trim() : "");
-      return { id: r.id, name: r.name, email: selectedEmail };
-    })
-    .filter((r) => r.email.length > 0);
+function parseMode(request: NextRequest): "full" | "catchup" {
+  const mode = request.nextUrl.searchParams.get("mode");
+  return mode === "catchup" ? "catchup" : "full";
 }
 
 export async function GET(request: NextRequest) {
@@ -70,11 +31,14 @@ export async function GET(request: NextRequest) {
 
   try {
     const week = await fetchWeekState(auth.supabase, weekStart);
-    const recipients = await getRecipients(auth.supabase);
+    const status = await getEmailDispatchStatus(auth.supabase, weekStart, "employee");
     return NextResponse.json({
       weekStart,
       published: Boolean(week.published),
-      eligibleCount: recipients.length,
+      eligibleCount: status.eligibleCount,
+      deliveredCount: status.deliveredCount,
+      catchupCount: status.catchupCount,
+      activeDispatch: status.activeDispatch,
     });
   } catch (e) {
     const message = mapEmailSendError(e);
@@ -91,33 +55,41 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Ongeldige weekStart" }, { status: 400 });
   }
 
+  const mode = parseMode(request);
+
   try {
     const week = await fetchWeekState(auth.supabase, weekStart);
     if (!week.published) {
       return NextResponse.json({ error: "Publiceer eerst de planning voor deze week." }, { status: 400 });
     }
-    const recipients = await getRecipients(auth.supabase);
-    if (!recipients.length) {
-      return NextResponse.json({ error: "Geen medewerkers met e-mailadres." }, { status: 400 });
+
+    const created = await createPlanningEmailDispatch(auth.supabase, {
+      weekStart,
+      audience: "employee",
+      mode,
+    });
+
+    if (!created.dispatchId) {
+      return NextResponse.json({
+        ok: true,
+        dispatchId: null,
+        total: 0,
+        skipped: created.skipped,
+        pending: 0,
+        message:
+          created.skipped > 0
+            ? "Alle medewerkers met e-mail hebben deze planning al ontvangen."
+            : "Geen medewerkers met e-mailadres.",
+      });
     }
 
-    const result = await sendPlanningPublishEmails({
-      weekStart,
-      planTitle: `SPL planning week ${getIsoWeekNumber(weekStart)}`,
-      notes: null,
-      recipients,
-    });
-    if (result.sent === 0 && result.failed > 0) {
-      return NextResponse.json(
-        { error: "Geen e-mails verzonden.", sent: 0, failed: result.failed, failures: result.failures.slice(0, 5) },
-        { status: 502 },
-      );
-    }
     return NextResponse.json({
       ok: true,
-      sent: result.sent,
-      failed: result.failed,
-      failures: result.failures.slice(0, 5),
+      dispatchId: created.dispatchId,
+      total: created.total,
+      skipped: created.skipped,
+      pending: created.pending,
+      mode,
     });
   } catch (e) {
     const message = mapEmailSendError(e);
