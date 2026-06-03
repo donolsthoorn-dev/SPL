@@ -53,6 +53,32 @@
         </header>
 
         <section class="toolbar card">
+          <div id="publicEmailToolbar" class="public-email-toolbar" hidden>
+            <div class="public-email-toolbar__intro">
+              <span class="public-email-toolbar__label">E-mail planning</span>
+              <p id="publicEmailStatusDetail" class="public-email-status-detail" aria-live="polite"></p>
+            </div>
+            <div class="public-email-toolbar__actions">
+              <button
+                type="button"
+                id="publicSendEmailBtn"
+                class="ghost-btn"
+                disabled
+                title="Stuur planning per e-mail naar medewerkers die deze week nog geen mail hebben"
+              >
+                Stuur mail medewerkers (0)
+              </button>
+              <button
+                type="button"
+                id="publicSendLocationEmailBtn"
+                class="ghost-btn"
+                disabled
+                title="Stuur planning per e-mail naar locaties die deze week nog geen mail hebben"
+              >
+                Stuur mail locaties (0)
+              </button>
+            </div>
+          </div>
           <input id="globalSearch" type="search" placeholder="Zoek..." />
           <span id="statusSummary" class="badge warning">Conflicten: 0</span>
           <div id="planningLegend">
@@ -283,27 +309,6 @@
                 </button>
                 <button type="button" id="publicCopyLinkBtn" class="ghost-btn" disabled title="Kopieer openbare link naar klembord">
                   Link
-                </button>
-                <button type="button" id="publicSendEmailBtn" class="ghost-btn" disabled title="Stuur planning per e-mail naar medewerkers die deze week nog geen mail hebben">
-                  E-mail planning naar 0 medewerkers
-                </button>
-                <button
-                  type="button"
-                  id="publicSendEmailCatchupBtn"
-                  class="ghost-btn"
-                  hidden
-                  title="Alleen medewerkers die de planning-mail nog niet hebben ontvangen"
-                >
-                  Alleen gemiste (0)
-                </button>
-                <button
-                  type="button"
-                  id="publicSendLocationEmailBtn"
-                  class="ghost-btn"
-                  disabled
-                  title="Stuur planning per e-mail naar locaties met e-mailadres"
-                >
-                  E-mail planning naar 0 locaties
                 </button>
                 <button type="button" id="publicUnpublishBtn" class="danger-soft-btn" hidden title="Planning weer als concept markeren">
                   Depubliceren
