@@ -62,6 +62,43 @@ function getIsoDateForWeekday(weekStart: string, weekday: number): string {
   return addDaysToIsoDate(weekStart, weekday - 1);
 }
 
+function getScheduledHoursForAssignment(
+  locations: WireframeLocation[],
+  locationId: string,
+  weekday: number,
+  dayPart: string,
+  weekStart: string,
+): number {
+  const location = locations.find((l) => l.id === locationId);
+  if (!location) return 0;
+  const dayMap: Record<number, string> = { 1: "ma", 2: "di", 3: "wo", 4: "do", 5: "vr" };
+  const dayKey = dayMap[weekday];
+  const targetDate = addDaysToIsoDate(weekStart, weekday - 1);
+  const period = location.periods.find((p) => targetDate >= p.start && targetDate <= p.end);
+  if (!period) return 0;
+  const slots = period.slots as Record<string, { ochtend?: number; middag?: number }>;
+  return Number(slots?.[dayKey]?.[dayPart as "ochtend" | "middag"] || 0);
+}
+
+/** Zelfde logica als getEmployeePlannedHours in public/prototype/wireframe.js. */
+export function getEmployeePlannedHours(s: PublicPlanningSnapshot, employeeId: string): number {
+  const hours = s.assignments
+    .filter((a) => a.employeeId === employeeId)
+    .reduce(
+      (total, assignment) =>
+        total +
+        getScheduledHoursForAssignment(
+          s.locations,
+          assignment.locationId,
+          assignment.weekday,
+          assignment.dayPart,
+          s.weekStart,
+        ),
+      0,
+    );
+  return Math.round(hours * 100) / 100;
+}
+
 function isOpenFromPeriods(
   loc: WireframeLocation | undefined,
   weekday: number,
@@ -69,15 +106,7 @@ function isOpenFromPeriods(
   weekStart: string,
 ): boolean {
   if (!loc) return false;
-  const dayMap: Record<number, string> = { 1: "ma", 2: "di", 3: "wo", 4: "do", 5: "vr" };
-  const dayKey = dayMap[weekday];
-  const targetDate = addDaysToIsoDate(weekStart, weekday - 1);
-  return loc.periods.some((period) => {
-    const inRange = targetDate >= period.start && targetDate <= period.end;
-    const slots = period.slots as Record<string, { ochtend?: number; middag?: number }>;
-    const hours = Number(slots?.[dayKey]?.[dayPart as "ochtend" | "middag"] || 0);
-    return inRange && hours > 0;
-  });
+  return getScheduledHoursForAssignment([loc], loc.id, weekday, dayPart, weekStart) > 0;
 }
 
 function getAssignmentsForCell(
@@ -273,7 +302,7 @@ export function buildPublicEmployeeTableHtml(s: PublicPlanningSnapshot): string 
       const cellInner = day || (isEmptyButAvailable ? "Beschikbaar" : "Afwezig");
       employeeHtml += `<td class="${dayClass}">${sickBadge}${leaveBadge}${cellInner}</td>`;
     }
-    const total = assignments.filter((a) => a.employeeId === emp.id).length * 4.5;
+    const total = getEmployeePlannedHours(s, emp.id);
     employeeHtml += `<td>${total}u / ${emp.weekHours}u</td></tr>`;
   });
   employeeHtml += "</tbody>";
@@ -409,7 +438,7 @@ export function getEmployeePlanningVerticalBlocks(
       rows.push({ label: dayLabel, value });
     }
 
-    const total = s.assignments.filter((a) => a.employeeId === emp.id).length * 4.5;
+    const total = getEmployeePlannedHours(s, emp.id);
     rows.push({ label: "Totaal", value: `${total}u / ${emp.weekHours}u` });
     blocks.push({ rows });
   });
@@ -453,7 +482,7 @@ export function getPersonalEmployeeVerticalSchedule(
     rows.push({ label: dayLabels[weekday - 1]!, value });
   }
 
-  const total = s.assignments.filter((a) => a.employeeId === emp.id).length * 4.5;
+  const total = getEmployeePlannedHours(s, emp.id);
   rows.push({ label: "totaal", value: `${total}u / ${emp.weekHours}u` });
   return rows;
 }
@@ -475,7 +504,7 @@ export function buildPublicEmployeeMatrix(s: PublicPlanningSnapshot): { headers:
         row.push(dayAssignments.map((a) => `${getLocationName(s.locations, a.locationId)} (${a.dayPart})`).join("; "));
       }
     }
-    const total = s.assignments.filter((a) => a.employeeId === emp.id).length * 4.5;
+    const total = getEmployeePlannedHours(s, emp.id);
     row.push(`${total} / ${emp.weekHours}`);
     rows.push(row);
   });
