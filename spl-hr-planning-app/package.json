@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "build:planning-core": "node scripts/build-planning-core.mjs",
+    "dev": "npm run build:planning-core && next dev",
+    "build": "npm run build:planning-core && next build",
     "start": "next start",
     "lint": "eslint ."
   },
@@ -23,6 +24,7 @@
     "@types/nodemailer": "^8.0.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "esbuild": "^0.25.12",
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.3",
     "typescript": "^6.0.2"

@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import { fetchWeekState, saveWeekState } from "@/lib/planning-data";
+import { fetchMasterWireframe, fetchWeekState, saveWeekState } from "@/lib/planning-data";
 import { requirePlanningApiUser } from "@/lib/planning-api-auth";
+import { validateWeekAssignments } from "@/lib/planning-core";
 import { isMondayIsoDate } from "@/lib/week-start";
 
 const assignmentSchema = z.object({
@@ -58,6 +59,26 @@ export async function PUT(request: NextRequest) {
   }
 
   try {
+    const { locations, employees } = await fetchMasterWireframe(auth.supabase);
+    const validation = validateWeekAssignments(
+      {
+        weekStart: parsed.data.weekStart,
+        locations,
+        employees,
+        assignments: parsed.data.assignments,
+      },
+      parsed.data.assignments,
+    );
+    if (!validation.ok) {
+      return NextResponse.json(
+        {
+          error: validation.errors[0] ?? "Planning validatie mislukt.",
+          errors: validation.errors,
+        },
+        { status: 400 },
+      );
+    }
+
     console.info("[planning.week.put] save request", {
       weekStart: parsed.data.weekStart,
       published: parsed.data.published,

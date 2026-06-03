@@ -146,6 +146,19 @@ function schedulePersistWeek() {
 }
 
 async function persistWeekNow(snapshot = buildWeekStateSnapshot()) {
+  const validation = SplPlanningCore.validateWeekAssignments(
+    {
+      weekStart: snapshot.weekStart,
+      locations,
+      employees,
+      assignments: snapshot.assignments,
+    },
+    snapshot.assignments
+  );
+  if (!validation.ok) {
+    window.alert(validation.errors.join("\n"));
+    return;
+  }
   try {
     const res = await fetch("/api/planning/week", {
       method: "PUT",
@@ -153,9 +166,25 @@ async function persistWeekNow(snapshot = buildWeekStateSnapshot()) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(snapshot)
     });
-    if (!res.ok) console.error("Week opslaan mislukt", await res.text());
+    if (!res.ok) {
+      let message = "Week opslaan mislukt.";
+      try {
+        const data = await res.json();
+        if (Array.isArray(data.errors) && data.errors.length > 0) {
+          message = data.errors.join("\n");
+        } else if (data.error) {
+          message = String(data.error);
+        }
+      } catch (_) {
+        message = await res.text();
+      }
+      console.error("Week opslaan mislukt", message);
+      window.alert(message);
+      return;
+    }
   } catch (e) {
     console.error(e);
+    window.alert(e?.message || "Week opslaan mislukt.");
   }
 }
 
@@ -382,20 +411,23 @@ function getAssignmentsForCell(locationId, weekday, dayPart) {
   return state.assignments.filter((a) => a.locationId === locationId && a.weekday === weekday && a.dayPart === dayPart);
 }
 
+function buildCoreSnapshot() {
+  return {
+    weekStart: state.weekStart,
+    locations,
+    employees,
+    assignments: state.assignments,
+  };
+}
+
 function normalizeAbsenceRange(absence) {
-  const startDate = String(absence?.startDate || absence?.date || "").trim();
-  const endDateRaw = String(absence?.endDate || "").trim();
-  const endDate = endDateRaw || startDate;
-  if (!startDate || !endDate) return null;
-  return startDate <= endDate
-    ? { startDate, endDate, reason: String(absence?.reason || "Ziek") }
-    : { startDate: endDate, endDate: startDate, reason: String(absence?.reason || "Ziek") };
+  const normalized = SplPlanningCore.normalizeAbsenceRange(absence);
+  if (!normalized) return null;
+  return { ...normalized, reason: String(absence?.reason || "Ziek") };
 }
 
 function isAbsenceOnDay(absence, dayIso) {
-  const normalized = normalizeAbsenceRange(absence);
-  if (!normalized) return false;
-  return dayIso >= normalized.startDate && dayIso <= normalized.endDate;
+  return SplPlanningCore.isAbsenceOnDate(absence, dayIso);
 }
 
 function doesAbsenceOverlapRange(absence, rangeStart, rangeEnd) {
@@ -467,9 +499,7 @@ function wouldExceedFixedEmployeesRule(locationId, employeeId) {
 
 /** Duintop VSO/TSO/BSO: meerdere Duintop-locaties op hetzelfde dagdeel is toegestaan. */
 function isDuintopLocation(locationId) {
-  const location = locations.find((l) => l.id === locationId);
-  if (!location) return false;
-  return /^duintop\s/i.test(String(location.name || "").trim());
+  return SplPlanningCore.isDuintopLocation(locations, locationId);
 }
 
 function getTimeslotAssignments(employeeId, weekday, dayPart) {
@@ -480,10 +510,13 @@ function getTimeslotAssignments(employeeId, weekday, dayPart) {
 
 /** Conflict als iemand op 2+ locaties staat, tenzij alle betrokken locaties Duintop zijn. */
 function timeslotHasDuplicateConflict(employeeId, weekday, dayPart) {
-  const slotAssignments = getTimeslotAssignments(employeeId, weekday, dayPart);
-  if (slotAssignments.length <= 1) return false;
-  const locationIds = [...new Set(slotAssignments.map((a) => a.locationId))];
-  return !locationIds.every(isDuintopLocation);
+  return SplPlanningCore.timeslotHasDuplicateConflict(
+    locations,
+    state.assignments,
+    employeeId,
+    weekday,
+    dayPart
+  );
 }
 
 function isEmployeeAlreadyPlannedAtTimeslot(employeeId, weekday, dayPart, ignoreLocationId = null) {
@@ -513,45 +546,21 @@ function canAssignEmployeeToCell(employeeId, locationId, weekday, dayPart, ignor
 }
 
 function getScheduledHoursForAssignment(locationId, weekday, dayPart, weekStart) {
-  const location = locations.find((l) => l.id === locationId);
-  if (!location) return 0;
-  const dayMap = { 1: "ma", 2: "di", 3: "wo", 4: "do", 5: "vr" };
-  const dayKey = dayMap[weekday];
-  const targetDate = addDaysToIsoDate(weekStart, weekday - 1);
-  const period = location.periods.find(
-    (p) => targetDate >= p.start && targetDate <= p.end
+  return SplPlanningCore.getScheduledHoursForAssignment(
+    locations,
+    locationId,
+    weekday,
+    dayPart,
+    weekStart
   );
-  if (!period) return 0;
-  return Number(period.slots?.[dayKey]?.[dayPart] || 0);
 }
 
 function getEmployeePlannedHours(employeeId) {
-  const hours = state.assignments
-    .filter((a) => a.employeeId === employeeId)
-    .reduce(
-      (total, assignment) =>
-        total +
-        getScheduledHoursForAssignment(
-          assignment.locationId,
-          assignment.weekday,
-          assignment.dayPart,
-          state.weekStart
-        ),
-      0
-    );
-  return Math.round(hours * 100) / 100;
+  return SplPlanningCore.getEmployeePlannedHours(buildCoreSnapshot(), employeeId);
 }
 
 function hasEmployeeTimeslotConflict(employeeId) {
-  const keys = new Set();
-  state.assignments
-    .filter((a) => a.employeeId === employeeId)
-    .forEach((a) => keys.add(`${a.weekday}-${a.dayPart}`));
-  for (const key of keys) {
-    const [weekday, dayPart] = key.split("-");
-    if (timeslotHasDuplicateConflict(employeeId, Number(weekday), dayPart)) return true;
-  }
-  return false;
+  return SplPlanningCore.hasEmployeeTimeslotConflict(locations, state.assignments, employeeId);
 }
 
 function hasEmployeeWeekdayConflict(employeeId, weekday) {
@@ -586,34 +595,23 @@ function getIsoDateForWeekday(weekday) {
 }
 
 function isEmployeeAvailableForWeekday(employee, weekday) {
-  if (!employee.days.includes(weekday)) return false;
-  const dayIso = getIsoDateForWeekday(weekday);
-  const isAbsent = (employee.absences || []).some((a) => isAbsenceOnDay(a, dayIso));
-  if (isAbsent) return false;
-  return locations.some((loc) => dayParts.some((dayPart) => isOpenFromPeriods(loc.id, weekday, dayPart, state.weekStart)));
+  return SplPlanningCore.isEmployeeAvailableForWeekday(buildCoreSnapshot(), employee, weekday);
 }
 
 function isEmployeePlanableForWeekday(employee, weekday) {
-  if (!employee.days.includes(weekday)) return false;
-  const dayIso = getIsoDateForWeekday(weekday);
-  return !(employee.absences || []).some((a) => isAbsenceOnDay(a, dayIso));
+  return SplPlanningCore.isEmployeePlanableForWeekday(employee, weekday, state.weekStart);
 }
 
 function getEmployeeAbsenceForWeekday(employee, weekday) {
-  const dayIso = getIsoDateForWeekday(weekday);
-  return (employee.absences || []).find((a) => isAbsenceOnDay(a, dayIso)) || null;
+  return SplPlanningCore.getEmployeeAbsenceForWeekday(employee, weekday, state.weekStart);
 }
 
 function isEmployeeSickForWeekday(employee, weekday) {
-  const absence = getEmployeeAbsenceForWeekday(employee, weekday);
-  if (!absence) return false;
-  return /ziek/i.test(String(absence.reason || ""));
+  return SplPlanningCore.isEmployeeSickForWeekday(employee, weekday, state.weekStart);
 }
 
 function isEmployeeOnLeaveForWeekday(employee, weekday) {
-  const absence = getEmployeeAbsenceForWeekday(employee, weekday);
-  if (!absence) return false;
-  return /verlof/i.test(String(absence.reason || ""));
+  return SplPlanningCore.isEmployeeOnLeaveForWeekday(employee, weekday, state.weekStart);
 }
 
 function isWeekPlanningFrozen() {
@@ -677,17 +675,7 @@ function getOtherTimeslotLocations(employeeId, weekday, dayPart, currentLocation
 }
 
 function isOpenFromPeriods(locationId, weekday, dayPart, weekStart) {
-  const location = locations.find((l) => l.id === locationId);
-  if (!location) return false;
-  const dayMap = { 1: "ma", 2: "di", 3: "wo", 4: "do", 5: "vr" };
-  const dayKey = dayMap[weekday];
-  const targetDate = addDaysToIsoDate(weekStart, weekday - 1);
-
-  return location.periods.some((period) => {
-    const inRange = targetDate >= period.start && targetDate <= period.end;
-    const hours = Number(period.slots?.[dayKey]?.[dayPart] || 0);
-    return inRange && hours > 0;
-  });
+  return SplPlanningCore.isOpenFromPeriodsById(locations, locationId, weekday, dayPart, weekStart);
 }
 
 function isLocationOpenWeekday(locationId, weekday, weekStart) {
@@ -1692,7 +1680,7 @@ function renderPlanningTables() {
       employeeHtml += `<td data-employee-cell="true" data-planable="${isPlanableDay}" data-employee="${emp.id}" data-weekday="${weekday}" class="${dayClass}">${sickBadge}${leaveBadge}${cellContent}</td>`;
     });
     const total = assignmentIndex.getEmployeeHours(emp.id);
-    const totalClass = total > emp.weekHours ? "danger" : total === emp.weekHours ? "ok" : "";
+    const totalClass = SplPlanningCore.getEmployeeTotalHoursCellClass(total, emp.weekHours);
     employeeHtml += `<td class="${totalClass}">${total}u / ${emp.weekHours}u</td></tr>`;
   });
   employeeHtml += "</tbody>";
@@ -2144,36 +2132,49 @@ function buildPublicLocationViewHtml() {
 }
 
 function buildPublicEmployeeViewHtml() {
-  const assignmentIndex = buildAssignmentIndexes(state.assignments);
+  const snapshot = buildCoreSnapshot();
   let employeeHtml = "<thead><tr><th>Medewerker</th>";
   for (let weekday = 1; weekday <= 5; weekday++) {
     employeeHtml += `<th>${getWeekdayHeaderLabel(weekday)}</th>`;
   }
   employeeHtml += "<th>Totaal</th></tr></thead><tbody>";
-  sortEmployeesByNameAsc(employees)
-    .forEach((emp) => {
+  sortEmployeesByNameAsc(employees).forEach((emp) => {
     employeeHtml += `<tr><td>${escapeHtmlForExport(emp.name)}</td>`;
     for (let weekday = 1; weekday <= 5; weekday++) {
-      const dayAssignments = assignmentIndex.getEmployeeDay(emp.id, weekday);
+      const dayAssignments = state.assignments.filter(
+        (a) => a.employeeId === emp.id && a.weekday === weekday
+      );
       const day = dayAssignments
         .map(
-          (a) => {
-            const onNonWorkingDay = !emp.days.includes(weekday);
-            const chipClass = onNonWorkingDay ? "person-status-orange" : "person-status-blue";
-            return `<div class="cell-employee-chip employee-plan-chip ${chipClass}"><span class="cell-employee-name">${escapeHtmlForExport(
+          (a) =>
+            `<div class="cell-employee-chip employee-plan-chip"><span class="cell-employee-name">${escapeHtmlForExport(
               `${getLocationName(a.locationId)} (${a.dayPart})`
-            )}</span></div>`;
-          }
+            )}</span></div>`
         )
         .join("");
+      const isSickDay = isEmployeeSickForWeekday(emp, weekday);
+      const isLeaveDay = isEmployeeOnLeaveForWeekday(emp, weekday);
       const isPlanableDay = isEmployeePlanableForWeekday(emp, weekday);
       const isEmptyButAvailable = !day && isEmployeeAvailableForWeekday(emp, weekday);
-      const dayClass = !isPlanableDay ? "closed-cell" : isEmptyButAvailable ? "ok" : "";
+      const dayClass = isSickDay
+        ? "sick-cell"
+        : !isPlanableDay
+          ? "closed-cell"
+          : isEmptyButAvailable
+            ? "ok"
+            : "";
+      const sickBadge = isSickDay
+        ? '<span class="cell-sick-marker" title="Ziek gemeld"><i class="fa-solid fa-bed cell-sick-icon" aria-hidden="true"></i><span>Ziek</span></span>'
+        : "";
+      const leaveBadge = isLeaveDay
+        ? '<span class="cell-leave-marker" title="Bijzonder verlof"><i class="fa-solid fa-calendar-check cell-leave-icon" aria-hidden="true"></i><span>Verlof</span></span>'
+        : "";
       const cellInner = day || (isEmptyButAvailable ? "Beschikbaar" : "Afwezig");
-      employeeHtml += `<td class="${dayClass}">${cellInner}</td>`;
+      employeeHtml += `<td class="${dayClass}">${sickBadge}${leaveBadge}${cellInner}</td>`;
     }
-    const total = assignmentIndex.getEmployeeHours(emp.id);
-    employeeHtml += `<td>${total}u / ${emp.weekHours}u</td></tr>`;
+    const total = SplPlanningCore.getEmployeePlannedHours(snapshot, emp.id);
+    const totalClass = SplPlanningCore.getEmployeeTotalHoursCellClass(total, emp.weekHours);
+    employeeHtml += `<td class="${totalClass}">${total}u / ${emp.weekHours}u</td></tr>`;
   });
   employeeHtml += "</tbody>";
   return employeeHtml;
@@ -2859,7 +2860,20 @@ document.getElementById("copyWeekBtn").addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(copyPayload)
     });
-    if (!saveRes.ok) throw new Error(await saveRes.text());
+    if (!saveRes.ok) {
+      let message = "Opslaan na kopiëren mislukt.";
+      try {
+        const data = await saveRes.json();
+        if (Array.isArray(data.errors) && data.errors.length > 0) {
+          message = data.errors.join("\n");
+        } else if (data.error) {
+          message = String(data.error);
+        }
+      } catch (_) {
+        message = await saveRes.text();
+      }
+      throw new Error(message);
+    }
 
     window.alert(
       `Planning is gekopieerd van ${formatWeekPeriod(sourceWeek)} naar ${formatWeekPeriod(targetWeek)}.`
