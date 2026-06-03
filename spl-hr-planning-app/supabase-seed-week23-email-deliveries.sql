@@ -1,6 +1,6 @@
 -- Eenmalig: markeer wat al verstuurd is via Resend op 2026-05-29 (week 2026-06-01 / week 23).
 -- Voer uit NA supabase-planning-email-queue.sql
--- Daarna in de app: "Alleen gemiste e-mails" voor medewerkers (39 stuks).
+-- Daarna in de app: catch-up voor medewerkers (94 - 40 = 54 nog te sturen).
 
 insert into public.spl_planning_email_deliveries (week_start, audience, recipient_id, email)
 select
