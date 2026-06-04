@@ -291,17 +291,30 @@ function dedupeAssignments(assignments: WireframeAssignment[]): WireframeAssignm
   return [...uniqueByKey.values()];
 }
 
+export type ValidateWeekAssignmentsOptions = {
+  /** Bij week-kopie: planningsafwijkingen zijn alleen waarschuwingen, geen blokkade. */
+  forWeekCopy?: boolean;
+};
+
 export type WeekAssignmentsValidationResult = {
   ok: boolean;
   errors: string[];
+  warnings: string[];
 };
 
 /** Server- en client-validatie vóór opslaan van een week. */
 export function validateWeekAssignments(
   snapshot: PlanningSnapshot,
   assignments: WireframeAssignment[],
+  options: ValidateWeekAssignmentsOptions = {},
 ): WeekAssignmentsValidationResult {
   const errors: string[] = [];
+  const warnings: string[] = [];
+  const { forWeekCopy = false } = options;
+  const pushIssue = (message: string) => {
+    if (forWeekCopy) warnings.push(message);
+    else errors.push(message);
+  };
   const deduped = dedupeAssignments(assignments);
   const employeesById = new Map(snapshot.employees.map((e) => [e.id, e]));
   const locationsById = new Map(snapshot.locations.map((l) => [l.id, l]));
@@ -311,15 +324,15 @@ export function validateWeekAssignments(
     const emp = employeesById.get(a.employeeId);
     const label = `Toewijzing ${index + 1}`;
     if (!loc) {
-      errors.push(`${label}: onbekende locatie.`);
+      pushIssue(`${label}: onbekende locatie.`);
       return;
     }
     if (!emp) {
-      errors.push(`${label}: onbekende medewerker.`);
+      pushIssue(`${label}: onbekende medewerker.`);
       return;
     }
     if (!isOpenFromPeriods(loc, a.weekday, a.dayPart, snapshot.weekStart)) {
-      errors.push(
+      pushIssue(
         `${label}: ${emp.name} op ${loc.name} (${a.dayPart}) is geen open dagdeel in deze week.`,
       );
     }
@@ -330,15 +343,13 @@ export function validateWeekAssignments(
     const emp = employeesById.get(employeeId);
     if (!emp) continue;
     if (hasEmployeeTimeslotConflict(snapshot.locations, deduped, employeeId)) {
-      errors.push(`${emp.name}: dubbele inplanning op hetzelfde dagdeel (conflict).`);
+      pushIssue(`${emp.name}: dubbele inplanning op hetzelfde dagdeel (conflict).`);
     }
     const planned = getEmployeePlannedHours({ ...snapshot, assignments: deduped }, employeeId);
     if (planned > emp.weekHours) {
-      errors.push(
-        `${emp.name}: ${planned} uur ingepland, meer dan contract (${emp.weekHours} uur).`,
-      );
+      pushIssue(`${emp.name}: ${planned} uur ingepland, meer dan contract (${emp.weekHours} uur).`);
     }
   }
 
-  return { ok: errors.length === 0, errors };
+  return { ok: errors.length === 0, errors, warnings };
 }

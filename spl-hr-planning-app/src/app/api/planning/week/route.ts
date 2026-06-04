@@ -16,6 +16,8 @@ const putBodySchema = z.object({
   weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   published: z.boolean(),
   assignments: z.array(assignmentSchema),
+  /** Alleen bij week-kopie: geen planningsvalidatie die opslaan blokkeert. */
+  forWeekCopy: z.boolean().optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -60,23 +62,25 @@ export async function PUT(request: NextRequest) {
 
   try {
     const { locations, employees } = await fetchMasterWireframe(auth.supabase);
-    const validation = validateWeekAssignments(
-      {
-        weekStart: parsed.data.weekStart,
-        locations,
-        employees,
-        assignments: parsed.data.assignments,
-      },
-      parsed.data.assignments,
-    );
-    if (!validation.ok) {
-      return NextResponse.json(
+    if (!parsed.data.forWeekCopy) {
+      const validation = validateWeekAssignments(
         {
-          error: validation.errors[0] ?? "Planning validatie mislukt.",
-          errors: validation.errors,
+          weekStart: parsed.data.weekStart,
+          locations,
+          employees,
+          assignments: parsed.data.assignments,
         },
-        { status: 400 },
+        parsed.data.assignments,
       );
+      if (!validation.ok) {
+        return NextResponse.json(
+          {
+            error: validation.errors[0] ?? "Planning validatie mislukt.",
+            errors: validation.errors,
+          },
+          { status: 400 },
+        );
+      }
     }
 
     console.info("[planning.week.put] save request", {

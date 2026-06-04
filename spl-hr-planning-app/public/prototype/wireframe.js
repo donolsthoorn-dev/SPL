@@ -2863,12 +2863,38 @@ document.getElementById("copyWeekBtn").addEventListener("click", async () => {
     "Nee, annuleren = Annuleren";
   const confirmed = window.confirm(message);
   if (!confirmed) return;
+
+  const copySnapshot = {
+    weekStart: targetWeek,
+    locations,
+    employees,
+    assignments: state.assignments.map((assignment) => ({ ...assignment }))
+  };
+  const copyValidation = SplPlanningCore.validateWeekAssignments(
+    copySnapshot,
+    copySnapshot.assignments,
+    { forWeekCopy: true }
+  );
+  if (copyValidation.warnings.length > 0) {
+    const warnIntro =
+      `${copyValidation.warnings.length} aandachtspunt${copyValidation.warnings.length === 1 ? "" : "en"} ` +
+      "in de planning (over uren, dubbel ingepland, gesloten dagdeel, enz.). Alles wordt wel gekopieerd.\n\n";
+    const warnList = copyValidation.warnings.slice(0, 12).join("\n");
+    const warnMore =
+      copyValidation.warnings.length > 12
+        ? `\n\n… en ${copyValidation.warnings.length - 12} andere.`
+        : "";
+    const proceed = window.confirm(`${warnIntro}${warnList}${warnMore}\n\nToch kopiëren?`);
+    if (!proceed) return;
+  }
+
   planningBootDone = false;
   try {
     const copyPayload = {
       weekStart: targetWeek,
       published: false,
-      assignments: state.assignments.map((assignment) => ({ ...assignment }))
+      assignments: copySnapshot.assignments,
+      forWeekCopy: true
     };
     const saveRes = await fetch("/api/planning/week", {
       method: "PUT",
@@ -2891,9 +2917,13 @@ document.getElementById("copyWeekBtn").addEventListener("click", async () => {
       throw new Error(message);
     }
 
-    window.alert(
-      `Planning is gekopieerd van ${formatWeekPeriod(sourceWeek)} naar ${formatWeekPeriod(targetWeek)}.`
-    );
+    let successMsg = `Planning is gekopieerd van ${formatWeekPeriod(sourceWeek)} naar ${formatWeekPeriod(targetWeek)}.`;
+    if (copyValidation.warnings.length > 0) {
+      successMsg += `\n\nLet op: ${copyValidation.warnings.length} aandachtspunt${
+        copyValidation.warnings.length === 1 ? "" : "en"
+      } in de gekopieerde planning (controleer Bezetting per medewerker/locatie).`;
+    }
+    window.alert(successMsg);
   } catch (err) {
     console.error(err);
     const message = err instanceof Error ? err.message : String(err);
