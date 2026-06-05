@@ -135,8 +135,18 @@ async function loadWeekFromApi(weekStart) {
   state.assignments = data.assignments || [];
 }
 
+async function flushPendingWeekSave() {
+  if (!planningBootDone || weekOperationInProgress) return;
+  cancelPendingWeekPersist();
+  await persistWeekNow(buildWeekStateSnapshot());
+}
+
 async function switchToWeek(weekStart, options = {}) {
   if (weekOperationInProgress && !options.allowDuringOperation) return;
+
+  if (!weekOperationInProgress) {
+    await flushPendingWeekSave();
+  }
 
   const previousWeekStart = state.weekStart;
   const previousPublished = state.published;
@@ -182,9 +192,6 @@ function schedulePersistWeek() {
   }, 450);
 }
 
-const PERSIST_VALIDATION_HINT =
-  "\n\nControleer Bezetting per medewerker of per locatie. Na een week-kopie kunnen verborgen toewijzingen op gesloten dagdelen publiceren blokkeren.";
-
 function confirmDespitePlanningIssues(issues, actionVerb) {
   if (!issues.length) return true;
   const warnIntro =
@@ -196,7 +203,9 @@ function confirmDespitePlanningIssues(issues, actionVerb) {
 }
 
 async function persistWeekNow(snapshot = buildWeekStateSnapshot(), options = {}) {
-  const { clearWeek = false, alertOnValidationError = true, allowPlanningIssues = false } = options;
+  const { clearWeek = false, alertOnValidationError = false } = options;
+  // Conceptweken mogen altijd opgeslagen worden, ook met conflicten of over uren.
+  const allowPlanningIssues = options.allowPlanningIssues ?? !snapshot.published;
   if (!allowPlanningIssues) {
     const validation = SplPlanningCore.validateWeekAssignments(
       {
@@ -208,9 +217,6 @@ async function persistWeekNow(snapshot = buildWeekStateSnapshot(), options = {})
       snapshot.assignments
     );
     if (!validation.ok) {
-      if (alertOnValidationError) {
-        window.alert(validation.errors.join("\n") + PERSIST_VALIDATION_HINT);
-      }
       return false;
     }
   }
@@ -240,7 +246,7 @@ async function persistWeekNow(snapshot = buildWeekStateSnapshot(), options = {})
         message = await res.text();
       }
       console.error("Week opslaan mislukt", message);
-      if (alertOnValidationError) window.alert(message + PERSIST_VALIDATION_HINT);
+      if (alertOnValidationError) window.alert(message);
       return false;
     }
     return true;
@@ -2747,10 +2753,7 @@ document.getElementById("publishBtn").addEventListener("click", async () => {
   renderContextControls();
   syncPlannerAssistantVisibility();
 
-  const saved = await persistWeekNow(buildWeekStateSnapshot(), {
-    allowPlanningIssues,
-    alertOnValidationError: !allowPlanningIssues,
-  });
+  const saved = await persistWeekNow(buildWeekStateSnapshot(), { allowPlanningIssues });
   if (!saved) {
     state.published = previousPublished;
     renderContextControls();
@@ -2780,7 +2783,7 @@ document.getElementById("publicUnpublishBtn").addEventListener("click", async ()
   renderContextControls();
   syncPlannerAssistantVisibility();
 
-  const saved = await persistWeekNow(buildWeekStateSnapshot(), { alertOnValidationError: true });
+  const saved = await persistWeekNow(buildWeekStateSnapshot());
   if (!saved) {
     state.published = true;
     renderContextControls();
@@ -3064,7 +3067,7 @@ document.getElementById("clearWeekBtn").addEventListener("click", async () => {
     renderPlanningTables();
     renderPublicTable();
     renderContextControls();
-    const saved = await persistWeekNow(buildWeekStateSnapshot(), { clearWeek: true });
+    const saved = await persistWeekNow(buildWeekStateSnapshot(), { clearWeek: true, alertOnValidationError: true });
     if (!saved) throw new Error("Opslaan mislukt.");
     window.alert(`Week ${formatWeekPeriod(state.weekStart)} is geleegd.`);
   } catch (err) {
