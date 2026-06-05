@@ -185,22 +185,34 @@ function schedulePersistWeek() {
 const PERSIST_VALIDATION_HINT =
   "\n\nControleer Bezetting per medewerker of per locatie. Na een week-kopie kunnen verborgen toewijzingen op gesloten dagdelen publiceren blokkeren.";
 
+function confirmDespitePlanningIssues(issues, actionVerb) {
+  if (!issues.length) return true;
+  const warnIntro =
+    `${issues.length} aandachtspunt${issues.length === 1 ? "" : "en"} ` +
+    "in de planning (over uren, dubbel ingepland, gesloten dagdeel, enz.).\n\n";
+  const warnList = issues.slice(0, 12).join("\n");
+  const warnMore = issues.length > 12 ? `\n\n… en ${issues.length - 12} andere.` : "";
+  return window.confirm(`${warnIntro}${warnList}${warnMore}\n\nToch ${actionVerb}?`);
+}
+
 async function persistWeekNow(snapshot = buildWeekStateSnapshot(), options = {}) {
-  const { clearWeek = false, alertOnValidationError = true } = options;
-  const validation = SplPlanningCore.validateWeekAssignments(
-    {
-      weekStart: snapshot.weekStart,
-      locations,
-      employees,
-      assignments: snapshot.assignments,
-    },
-    snapshot.assignments
-  );
-  if (!validation.ok) {
-    if (alertOnValidationError) {
-      window.alert(validation.errors.join("\n") + PERSIST_VALIDATION_HINT);
+  const { clearWeek = false, alertOnValidationError = true, allowPlanningIssues = false } = options;
+  if (!allowPlanningIssues) {
+    const validation = SplPlanningCore.validateWeekAssignments(
+      {
+        weekStart: snapshot.weekStart,
+        locations,
+        employees,
+        assignments: snapshot.assignments,
+      },
+      snapshot.assignments
+    );
+    if (!validation.ok) {
+      if (alertOnValidationError) {
+        window.alert(validation.errors.join("\n") + PERSIST_VALIDATION_HINT);
+      }
+      return false;
     }
-    return false;
   }
   try {
     const res = await fetch("/api/planning/week", {
@@ -212,6 +224,7 @@ async function persistWeekNow(snapshot = buildWeekStateSnapshot(), options = {})
         published: snapshot.published,
         assignments: snapshot.assignments,
         clearWeek,
+        allowPlanningIssues,
       }),
     });
     if (!res.ok) {
@@ -2705,6 +2718,7 @@ document.getElementById("publishBtn").addEventListener("click", async () => {
   if (weekOperationInProgress) return;
 
   const nextPublished = !state.published;
+  let allowPlanningIssues = false;
   if (nextPublished) {
     const prePublishSnapshot = { ...buildWeekStateSnapshot(), published: true };
     const validation = SplPlanningCore.validateWeekAssignments(
@@ -2717,8 +2731,8 @@ document.getElementById("publishBtn").addEventListener("click", async () => {
       prePublishSnapshot.assignments
     );
     if (!validation.ok) {
-      window.alert(validation.errors.join("\n") + PERSIST_VALIDATION_HINT);
-      return;
+      if (!confirmDespitePlanningIssues(validation.errors, "publiceren")) return;
+      allowPlanningIssues = true;
     }
   }
 
@@ -2733,7 +2747,10 @@ document.getElementById("publishBtn").addEventListener("click", async () => {
   renderContextControls();
   syncPlannerAssistantVisibility();
 
-  const saved = await persistWeekNow(buildWeekStateSnapshot(), { alertOnValidationError: true });
+  const saved = await persistWeekNow(buildWeekStateSnapshot(), {
+    allowPlanningIssues,
+    alertOnValidationError: !allowPlanningIssues,
+  });
   if (!saved) {
     state.published = previousPublished;
     renderContextControls();
@@ -2979,18 +2996,7 @@ document.getElementById("copyWeekBtn").addEventListener("click", async () => {
     copySnapshot.assignments,
     { forWeekCopy: true }
   );
-  if (copyValidation.warnings.length > 0) {
-    const warnIntro =
-      `${copyValidation.warnings.length} aandachtspunt${copyValidation.warnings.length === 1 ? "" : "en"} ` +
-      "in de planning (over uren, dubbel ingepland, gesloten dagdeel, enz.). Alles wordt wel gekopieerd.\n\n";
-    const warnList = copyValidation.warnings.slice(0, 12).join("\n");
-    const warnMore =
-      copyValidation.warnings.length > 12
-        ? `\n\n… en ${copyValidation.warnings.length - 12} andere.`
-        : "";
-    const proceed = window.confirm(`${warnIntro}${warnList}${warnMore}\n\nToch kopiëren?`);
-    if (!proceed) return;
-  }
+  if (!confirmDespitePlanningIssues(copyValidation.warnings, "kopiëren")) return;
 
   beginWeekOperation();
   try {

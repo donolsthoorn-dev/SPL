@@ -18,6 +18,8 @@ const putBodySchema = z.object({
   assignments: z.array(assignmentSchema),
   /** Alleen bij week-kopie: geen planningsvalidatie die opslaan blokkeert. */
   forWeekCopy: z.boolean().optional(),
+  /** Publiceren ondanks aandachtspunten (over uren, conflicten, gesloten dagdelen). */
+  allowPlanningIssues: z.boolean().optional(),
   /** Alleen bij "week legen": lege assignments mogen bestaande toewijzingen verwijderen. */
   clearWeek: z.boolean().optional(),
 });
@@ -64,7 +66,8 @@ export async function PUT(request: NextRequest) {
 
   try {
     const { locations, employees } = await fetchMasterWireframe(auth.supabase);
-    if (!parsed.data.forWeekCopy) {
+    const skipPlanningValidation = parsed.data.forWeekCopy || parsed.data.allowPlanningIssues;
+    if (!skipPlanningValidation) {
       const validation = validateWeekAssignments(
         {
           weekStart: parsed.data.weekStart,
@@ -90,6 +93,7 @@ export async function PUT(request: NextRequest) {
       published: parsed.data.published,
       assignments: parsed.data.assignments.length,
       clearWeek: Boolean(parsed.data.clearWeek),
+      allowPlanningIssues: Boolean(parsed.data.allowPlanningIssues),
     });
     await saveWeekState(
       auth.supabase,
