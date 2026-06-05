@@ -499,11 +499,17 @@ export async function fetchPublishedWeekStartsForEmployee(
   return distinct.filter((w) => published.has(w)).sort((a, b) => a.localeCompare(b));
 }
 
+export type SaveWeekStateOptions = {
+  /** Alleen bij expliciet "week legen": lege assignments mogen bestaande toewijzingen verwijderen. */
+  clearWeek?: boolean;
+};
+
 export async function saveWeekState(
   supabase: SupabaseClient,
   weekStart: string,
   published: boolean,
   assignments: WireframeAssignment[],
+  options: SaveWeekStateOptions = {},
 ): Promise<void> {
   assertMondayWeekStart(weekStart);
 
@@ -529,6 +535,10 @@ export async function saveWeekState(
     uniqueByKey.set(key, assignment);
   }
   const desiredAssignments = [...uniqueByKey.values()];
+  const shouldMutateAssignments = desiredAssignments.length > 0 || Boolean(options.clearWeek);
+  if (!shouldMutateAssignments) {
+    return;
+  }
 
   if (desiredAssignments.length > 0) {
     const { error: upsertErr } = await supabase.from("spl_planning_assignments").upsert(

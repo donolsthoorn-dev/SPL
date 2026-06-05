@@ -18,6 +18,8 @@ const putBodySchema = z.object({
   assignments: z.array(assignmentSchema),
   /** Alleen bij week-kopie: geen planningsvalidatie die opslaan blokkeert. */
   forWeekCopy: z.boolean().optional(),
+  /** Alleen bij "week legen": lege assignments mogen bestaande toewijzingen verwijderen. */
+  clearWeek: z.boolean().optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -87,12 +89,14 @@ export async function PUT(request: NextRequest) {
       weekStart: parsed.data.weekStart,
       published: parsed.data.published,
       assignments: parsed.data.assignments.length,
+      clearWeek: Boolean(parsed.data.clearWeek),
     });
     await saveWeekState(
       auth.supabase,
       parsed.data.weekStart,
       parsed.data.published,
       parsed.data.assignments,
+      { clearWeek: parsed.data.clearWeek },
     );
     return NextResponse.json({ ok: true });
   } catch (e) {

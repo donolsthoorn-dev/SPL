@@ -86,7 +86,34 @@ function getIsoWeekNumber(dateStr) {
 }
 
 let planningBootDone = false;
+let weekOperationInProgress = false;
 let __weekPersistTimer = null;
+
+function cancelPendingWeekPersist() {
+  window.clearTimeout(__weekPersistTimer);
+  __weekPersistTimer = null;
+}
+
+function syncWeekOperationUi() {
+  const busy = weekOperationInProgress;
+  ["prevWeekBtn", "nextWeekBtn", "copyWeekBtn", "clearWeekBtn", "publishBtn", "publicUnpublishBtn", "weekStart"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = busy;
+  });
+}
+
+function beginWeekOperation() {
+  cancelPendingWeekPersist();
+  weekOperationInProgress = true;
+  planningBootDone = false;
+  syncWeekOperationUi();
+}
+
+function endWeekOperation() {
+  weekOperationInProgress = false;
+  planningBootDone = true;
+  syncWeekOperationUi();
+}
 
 async function loadBootstrapFromApi() {
   const res = await fetch("/api/planning/bootstrap", { credentials: "include" });
@@ -108,18 +135,28 @@ async function loadWeekFromApi(weekStart) {
   state.assignments = data.assignments || [];
 }
 
-async function switchToWeek(weekStart) {
+async function switchToWeek(weekStart, options = {}) {
+  if (weekOperationInProgress && !options.allowDuringOperation) return;
+
+  const previousWeekStart = state.weekStart;
+  const previousPublished = state.published;
+  const previousAssignments = state.assignments.map((assignment) => ({ ...assignment }));
+
   state.weekStart = toMondayIsoDate(weekStart);
   document.getElementById("weekStart").value = state.weekStart;
-  planningBootDone = false;
+  if (!weekOperationInProgress) planningBootDone = false;
   try {
     await loadWeekFromApi(state.weekStart);
   } catch (err) {
+    state.weekStart = previousWeekStart;
+    state.published = previousPublished;
+    state.assignments = previousAssignments;
+    document.getElementById("weekStart").value = state.weekStart;
     console.error(err);
     const message = err instanceof Error ? err.message : String(err);
     window.alert(`Week kon niet geladen worden: ${message}`);
   }
-  planningBootDone = true;
+  if (!weekOperationInProgress) planningBootDone = true;
   renderContextControls();
   renderPlanningTables();
   renderLocationList();
@@ -137,15 +174,19 @@ async function switchToWeek(weekStart) {
 }
 
 function schedulePersistWeek() {
-  if (!planningBootDone) return;
+  if (!planningBootDone || weekOperationInProgress) return;
   const snapshot = buildWeekStateSnapshot();
-  window.clearTimeout(__weekPersistTimer);
+  cancelPendingWeekPersist();
   __weekPersistTimer = window.setTimeout(() => {
     void persistWeekNow(snapshot);
   }, 450);
 }
 
-async function persistWeekNow(snapshot = buildWeekStateSnapshot()) {
+const PERSIST_VALIDATION_HINT =
+  "\n\nControleer Bezetting per medewerker of per locatie. Na een week-kopie kunnen verborgen toewijzingen op gesloten dagdelen publiceren blokkeren.";
+
+async function persistWeekNow(snapshot = buildWeekStateSnapshot(), options = {}) {
+  const { clearWeek = false, alertOnValidationError = true } = options;
   const validation = SplPlanningCore.validateWeekAssignments(
     {
       weekStart: snapshot.weekStart,
@@ -156,15 +197,22 @@ async function persistWeekNow(snapshot = buildWeekStateSnapshot()) {
     snapshot.assignments
   );
   if (!validation.ok) {
-    window.alert(validation.errors.join("\n"));
-    return;
+    if (alertOnValidationError) {
+      window.alert(validation.errors.join("\n") + PERSIST_VALIDATION_HINT);
+    }
+    return false;
   }
   try {
     const res = await fetch("/api/planning/week", {
       method: "PUT",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(snapshot)
+      body: JSON.stringify({
+        weekStart: snapshot.weekStart,
+        published: snapshot.published,
+        assignments: snapshot.assignments,
+        clearWeek,
+      }),
     });
     if (!res.ok) {
       let message = "Week opslaan mislukt.";
@@ -179,12 +227,14 @@ async function persistWeekNow(snapshot = buildWeekStateSnapshot()) {
         message = await res.text();
       }
       console.error("Week opslaan mislukt", message);
-      window.alert(message);
-      return;
+      if (alertOnValidationError) window.alert(message + PERSIST_VALIDATION_HINT);
+      return false;
     }
+    return true;
   } catch (e) {
     console.error(e);
-    window.alert(e?.message || "Week opslaan mislukt.");
+    if (alertOnValidationError) window.alert(e?.message || "Week opslaan mislukt.");
+    return false;
   }
 }
 
@@ -2652,30 +2702,81 @@ globalSearchEl?.addEventListener("input", refreshSearch);
 locationSearchInputEl?.addEventListener("input", refreshSearch);
 employeeSearchInputEl?.addEventListener("input", refreshSearch);
 document.getElementById("publishBtn").addEventListener("click", async () => {
-  state.published = !state.published;
+  if (weekOperationInProgress) return;
+
+  const nextPublished = !state.published;
+  if (nextPublished) {
+    const prePublishSnapshot = { ...buildWeekStateSnapshot(), published: true };
+    const validation = SplPlanningCore.validateWeekAssignments(
+      {
+        weekStart: prePublishSnapshot.weekStart,
+        locations,
+        employees,
+        assignments: prePublishSnapshot.assignments,
+      },
+      prePublishSnapshot.assignments
+    );
+    if (!validation.ok) {
+      window.alert(validation.errors.join("\n") + PERSIST_VALIDATION_HINT);
+      return;
+    }
+  }
+
+  cancelPendingWeekPersist();
+  beginWeekOperation();
+  const previousPublished = state.published;
+  state.published = nextPublished;
   if (state.published) {
     state.selectedCell = null;
     state.selectedEmployeeCell = null;
   }
+  renderContextControls();
+  syncPlannerAssistantVisibility();
+
+  const saved = await persistWeekNow(buildWeekStateSnapshot(), { alertOnValidationError: true });
+  if (!saved) {
+    state.published = previousPublished;
+    renderContextControls();
+    syncPlannerAssistantVisibility();
+    endWeekOperation();
+    return;
+  }
+
   await refreshPublishedWeeks();
   renderPublicTable();
   renderContextControls();
   syncPlannerAssistantVisibility();
-  void persistWeekNow();
+  endWeekOperation();
 });
 
 document.getElementById("publicUnpublishBtn").addEventListener("click", async () => {
-  if (!state.published) return;
+  if (!state.published || weekOperationInProgress) return;
   const ok = window.confirm(
     "De planning van deze week niet meer tonen op Publieke inzage?\n\n" +
       "De week wordt weer als concept gemarkeerd; je kunt daarna opnieuw publiceren."
   );
   if (!ok) return;
+
+  cancelPendingWeekPersist();
+  beginWeekOperation();
   state.published = false;
+  renderContextControls();
+  syncPlannerAssistantVisibility();
+
+  const saved = await persistWeekNow(buildWeekStateSnapshot(), { alertOnValidationError: true });
+  if (!saved) {
+    state.published = true;
+    renderContextControls();
+    syncPlannerAssistantVisibility();
+    endWeekOperation();
+    return;
+  }
+
   await refreshPublishedWeeks();
   renderPublicTable();
   renderContextControls();
-  void persistWeekNow();
+  syncPlannerAssistantVisibility();
+  endWeekOperation();
 });
 
 document.getElementById("publicExportExcelBtn").addEventListener("click", () => exportPublicExcel());
@@ -2803,6 +2904,10 @@ publicWeekSelectEl?.addEventListener("change", async (e) => {
 });
 
 document.getElementById("weekStart").addEventListener("change", async (e) => {
+  if (weekOperationInProgress) {
+    e.target.value = state.weekStart;
+    return;
+  }
   const nextWeek = toMondayIsoDate(e.target.value);
   e.target.value = nextWeek;
   if (state.activePanel === "publicPanel" && !state.publishedWeeks.includes(nextWeek)) {
@@ -2831,9 +2936,10 @@ document.getElementById("nextWeekBtn").addEventListener("click", async () => {
   await switchToWeek(addDaysToIsoDate(state.weekStart, 7));
 });
 document.getElementById("copyWeekBtn").addEventListener("click", async () => {
+  if (weekOperationInProgress) return;
+
   const sourceWeek = state.weekStart;
   const targetWeek = addDaysToIsoDate(sourceWeek, 7);
-  planningBootDone = false;
   try {
     const targetRes = await fetch(`/api/planning/week?weekStart=${encodeURIComponent(targetWeek)}`, { credentials: "include" });
     if (!targetRes.ok) {
@@ -2852,8 +2958,6 @@ document.getElementById("copyWeekBtn").addEventListener("click", async () => {
     const message = err instanceof Error ? err.message : String(err);
     window.alert(`Kopiëren mislukt: ${message}`);
     return;
-  } finally {
-    planningBootDone = true;
   }
 
   const message =
@@ -2888,7 +2992,7 @@ document.getElementById("copyWeekBtn").addEventListener("click", async () => {
     if (!proceed) return;
   }
 
-  planningBootDone = false;
+  beginWeekOperation();
   try {
     const copyPayload = {
       weekStart: targetWeek,
@@ -2917,11 +3021,13 @@ document.getElementById("copyWeekBtn").addEventListener("click", async () => {
       throw new Error(message);
     }
 
+    await switchToWeek(targetWeek, { allowDuringOperation: true });
+
     let successMsg = `Planning is gekopieerd van ${formatWeekPeriod(sourceWeek)} naar ${formatWeekPeriod(targetWeek)}.`;
     if (copyValidation.warnings.length > 0) {
       successMsg += `\n\nLet op: ${copyValidation.warnings.length} aandachtspunt${
         copyValidation.warnings.length === 1 ? "" : "en"
-      } in de gekopieerde planning (controleer Bezetting per medewerker/locatie).`;
+      } in de gekopieerde planning (controleer Bezetting per medewerker/locatie voordat je publiceert).`;
     }
     window.alert(successMsg);
   } catch (err) {
@@ -2929,7 +3035,7 @@ document.getElementById("copyWeekBtn").addEventListener("click", async () => {
     const message = err instanceof Error ? err.message : String(err);
     window.alert(`Kopiëren mislukt: ${message}`);
   } finally {
-    planningBootDone = true;
+    endWeekOperation();
   }
 });
 document.getElementById("clearWeekBtn").addEventListener("click", async () => {
@@ -2945,21 +3051,22 @@ document.getElementById("clearWeekBtn").addEventListener("click", async () => {
   const confirmed = window.confirm(message);
   if (!confirmed) return;
 
-  planningBootDone = false;
+  beginWeekOperation();
   try {
     state.assignments = [];
     state.published = false;
     renderPlanningTables();
     renderPublicTable();
     renderContextControls();
-    await persistWeekNow(buildWeekStateSnapshot());
+    const saved = await persistWeekNow(buildWeekStateSnapshot(), { clearWeek: true });
+    if (!saved) throw new Error("Opslaan mislukt.");
     window.alert(`Week ${formatWeekPeriod(state.weekStart)} is geleegd.`);
   } catch (err) {
     console.error(err);
     const message = err instanceof Error ? err.message : String(err);
     window.alert(`Legen van week mislukt: ${message}`);
   } finally {
-    planningBootDone = true;
+    endWeekOperation();
   }
 });
 document.getElementById("backToLocationsBtn").addEventListener("click", () => activatePanel("locationsPanel"));
